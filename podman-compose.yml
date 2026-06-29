@@ -1,0 +1,352 @@
+# =============================================================================
+# Podman Compose Configuration for RetailApp
+# =============================================================================
+# Complete deployment configuration for the retail application including:
+# - PostgreSQL database with pre-loaded data
+# - Backend API (Node.js/Express)
+# - Frontend (React + Nginx)
+# - RAG Retrieval FastAPI Server
+#
+# Usage:
+#   1. Copy .env.example to .env and configure your values
+#   2. Run: podman-compose up -d
+#   3. Access frontend at: http://localhost:3000
+#   4. Access backend API at: http://localhost:4000
+#   5. Access RAG server at: http://localhost:8080
+#
+# To stop: podman-compose down
+# To view logs: podman-compose logs -f [service-name]
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database Service
+  # ===========================================================================
+  # Primary database for retail application data
+  # Includes automatic initialization with full_dump.sql
+  postgres:
+    build:
+      context: ./postgresql
+      dockerfile: Dockerfile
+    container_name: retailapp-postgres
+    image: retailapp-postgres:latest
+    
+    environment:
+      # PostgreSQL Configuration
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: retaildb
+      
+      # Performance tuning
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAX_CONNECTIONS: 100
+    
+    ports:
+      - "5432:5432"
+    
+    volumes:
+      # Persistent data storage
+      - postgres_data:/var/lib/postgresql/data
+      # SQL initialization script (auto-executed on first run)
+      - ./postgresql/full_dump.sql:/docker-entrypoint-initdb.d/full_dump.sql:ro
+    
+    networks:
+      - retailapp-network
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d retaildb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    restart: unless-stopped
+    
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===========================================================================
+  # Backend API Service
+  # ===========================================================================
+  # Node.js/Express REST API with IBM Verify authentication
+  # Handles all business logic and database operations
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: retailapp-backend
+    image: retailapp-backend:latest
+    
+    environment:
+      # Database Configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: retaildb
+      
+      # IBM Verify OAuth/OIDC Configuration
+      IBM_VERIFY_ISSUER: ${IBM_VERIFY_ISSUER:-https://emeabuildlab.verify.ibm.com/oidc/endpoint/default}
+      IBM_VERIFY_CLIENT_ID: ${IBM_VERIFY_CLIENT_ID}
+      IBM_VERIFY_CLIENT_SECRET: ${IBM_VERIFY_CLIENT_SECRET}
+      IBM_VERIFY_CALLBACK_URL: ${IBM_VERIFY_CALLBACK_URL:-https://localhost:4443/api/auth/verify/callback}
+      IBM_VERIFY_SCOPE: ${IBM_VERIFY_SCOPE:-openid profile email}
+      
+      # Application Security
+      SESSION_SECRET: ${SESSION_SECRET:-generate_a_random_secret_here}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
+      
+      # CORS and Frontend Configuration
+      FRONTEND_URL: ${FRONTEND_URL:-https://localhost:3443}
+      
+      # Server Configuration
+      PORT: 4000
+      HTTPS_PORT: 4443
+      SSL_CERT_PATH: /etc/ssl/certs/server.crt
+      SSL_KEY_PATH: /etc/ssl/private/server.key
+      NODE_ENV: production
+      
+      # RAG Server Integration
+      RAG_RETRIEVAL_URL: ${RAG_RETRIEVAL_URL:-http://rag-server:8080}
+      RAG_BEARER_TOKEN: ${RAG_BEARER_TOKEN:-}
+    
+    ports:
+      - "4000:4000"
+      - "4443:4443"
+    
+    volumes:
+      - ./certs/server.crt:/etc/ssl/certs/server.crt:ro
+      - ./certs/server.key:/etc/ssl/private/server.key:ro
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    networks:
+      - retailapp-network
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "https://localhost:4443/api/health", "--no-check-certificate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ===========================================================================
+  # Frontend Service
+  # ===========================================================================
+  # React SPA served by Nginx
+  # Provides the user interface for the retail application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Build-time environment variable for API endpoint
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000/api}
+    container_name: retailapp-frontend
+    image: retailapp-frontend:latest
+    
+    ports:
+      - "3000:8080"
+      - "3443:8443"
+    
+    volumes:
+      # Mount SSL certificates
+      - ./certs/server.crt:/etc/nginx/ssl/server.crt:ro
+      - ./certs/server.key:/etc/nginx/ssl/server.key:ro
+    
+    depends_on:
+      - backend
+    
+    networks:
+      - retailapp-network
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:8443"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # ===========================================================================
+  # RAG Retrieval FastAPI Server
+  # ===========================================================================
+  # Provides semantic and keyword search capabilities
+  # Integrates with IBM Watsonx for embeddings and Milvus for vector storage
+  rag-server:
+    build:
+      context: ./data-for-ai/rag-retrieval-fastapi-server
+      dockerfile: Dockerfile
+    container_name: retailapp-rag-server
+    image: retailapp-rag-server:latest
+    
+    environment:
+      # Server Configuration
+      HOST: 0.0.0.0
+      PORT: 8080
+      SERVER_NAME: rag-retrieval-api
+      SERVER_VERSION: 1.0.0
+      SERVER_DESCRIPTION: FastAPI RAG Retrieval Server for semantic and keyword search
+      ENVIRONMENT: production
+      
+      # CORS Configuration
+      ALLOWED_ORIGINS: "*"
+      
+      # API Authentication (optional)
+      APP_BEARER_TOKEN: ${RAG_BEARER_TOKEN:-}
+      
+      # IBM Watsonx Embeddings Configuration
+      WATSONX_URL: ${WATSONX_URL:-https://us-south.ml.cloud.ibm.com}
+      WATSONX_API_KEY: ${WATSONX_API_KEY}
+      WATSONX_PROJECT_ID: ${WATSONX_PROJECT_ID}
+      EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-intfloat/multilingual-e5-large}
+      
+      # Vector Database Configuration
+      VECTOR_DB_TYPE: milvus
+      MILVUS_HOST: ${MILVUS_HOST:-localhost}
+      MILVUS_PORT: ${MILVUS_PORT:-19530}
+      MILVUS_USER: ${MILVUS_USER:-root}
+      MILVUS_PASSWORD: ${MILVUS_PASSWORD:-Milvus}
+      MILVUS_SECURE: ${MILVUS_SECURE:-true}
+      MILVUS_COLLECTION: ${MILVUS_COLLECTION:-product_insights}
+      MILVUS_DENSE_FIELD: ${MILVUS_DENSE_FIELD:-vector}
+      MILVUS_TEXT_FIELD: ${MILVUS_TEXT_FIELD:-text}
+      
+      # Python Configuration
+      PYTHONUNBUFFERED: 1
+    
+    ports:
+      - "8080:8080"
+    
+    networks:
+      - retailapp-network
+    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+# =============================================================================
+# Networks
+# =============================================================================
+# Bridge network for inter-service communication
+networks:
+  retailapp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# =============================================================================
+# Volumes
+# =============================================================================
+# Persistent storage for PostgreSQL data
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/postgres
+
+# =============================================================================
+# Additional Notes
+# =============================================================================
+# 
+# Service Dependencies:
+# - Frontend depends on Backend
+# - Backend depends on PostgreSQL (with health check)
+# - RAG Server is independent but used by Backend
+#
+# Port Mapping:
+# - 3000 -> Frontend (Nginx serving React app)
+# - 4000 -> Backend API (Express.js)
+# - 5432 -> PostgreSQL Database
+# - 8080 -> RAG Retrieval Server (FastAPI)
+#
+# Health Checks:
+# All services include health checks for monitoring and orchestration
+#
+# Resource Management:
+# Resource limits are configured for each service to prevent resource exhaustion
+# Adjust based on your system capabilities
+#
+# Security Considerations:
+# - Change default passwords in production
+# - Use secrets management for sensitive data
+# - Configure proper CORS origins
+# - Enable TLS/SSL for production deployments
+# - Use strong SESSION_SECRET and JWT_SECRET values
+#
+# Scaling:
+# To scale services horizontally:
+#   podman-compose up -d --scale backend=3
+#
+# Logs:
+# View logs for all services: podman-compose logs -f
+# View logs for specific service: podman-compose logs -f backend
+#
+# Maintenance:
+# - Backup postgres_data volume regularly
+# - Monitor resource usage with: podman stats
+# - Update images periodically for security patches
+#
+# Troubleshooting:
+# - Check service status: podman-compose ps
+# - Inspect service: podman inspect retailapp-backend
+# - Enter container: podman exec -it retailapp-backend sh
+# - Check networks: podman network ls
+# - Check volumes: podman volume ls
+#
+# =============================================================================
+
+# Made with Bob

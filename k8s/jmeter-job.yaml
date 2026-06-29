@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: jmeter-simulation
+  namespace: retail
+spec:
+  ttlSecondsAfterFinished: 3600  # Clean up job after 1 hour
+  backoffLimit: 0  # Don't retry on failure
+  template:
+    metadata:
+      labels:
+        app: jmeter-simulation
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+      - name: dockerhub-secret
+      containers:
+      - name: jmeter
+        image: docker.io/technologybuildingblocks/retail-jmeter:1.0.0-dev
+        command: ["bash", "/jmeter/run_spike.sh"]
+        args: ["$(BACKEND_ROUTE)"]
+        env:
+        - name: BACKEND_ROUTE
+          value: "retail-backend-retail.apps.cluster.domain.com"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: jmeter-results
+          mountPath: /jmeter/results
+      volumes:
+      - name: jmeter-results
+        emptyDir: {}
+
+# Made with Bob
