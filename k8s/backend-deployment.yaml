@@ -15,7 +15,7 @@ spec:
       labels:
         app: retail-backend
     spec:
-      serviceAccountName: retail
+      serviceAccountName: NAMESPACE_PLACEHOLDER
       imagePullSecrets:
         - name: dockerhub-secret
       containers:

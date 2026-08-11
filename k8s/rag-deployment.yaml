@@ -15,7 +15,7 @@ spec:
       labels:
         app: rag-retrieval-api
     spec:
-      serviceAccountName: retail
+      serviceAccountName: NAMESPACE_PLACEHOLDER
       imagePullSecrets:
         - name: dockerhub-secret
       containers:
@@ -41,7 +41,7 @@ spec:
               value: ""
             # IBM Watsonx Embeddings Configuration
             - name: WATSONX_URL
-              value: ${WATSONX_URL}
+              value: "WATSONX_URL_PLACEHOLDER"
             - name: WATSONX_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -59,11 +59,11 @@ spec:
               value: "milvus"
             # Milvus Configuration
             - name: MILVUS_HOST
-              value: ${MILVUS_HOST}
+              value: "MILVUS_HOST_PLACEHOLDER"
             - name: MILVUS_PORT
-              value: ${MILVUS_PORT}
+              value: "MILVUS_PORT_PLACEHOLDER"
             - name: MILVUS_USER
-              value: ${MILVUS_USER}
+              value: "MILVUS_USER_PLACEHOLDER"
             - name: MILVUS_PASSWORD
               valueFrom:
                 secretKeyRef:

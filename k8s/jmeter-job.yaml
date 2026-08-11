@@ -21,7 +21,7 @@ spec:
         args: ["$(BACKEND_ROUTE)"]
         env:
         - name: BACKEND_ROUTE
-          value: "retail-backend-retail.apps.cluster.domain.com"
+          value: "BACKEND_ROUTE_PLACEHOLDER"
         resources:
           requests:
             memory: "512Mi"

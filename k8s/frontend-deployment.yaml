@@ -15,12 +15,12 @@ spec:
       labels:
         app: retail-frontend
     spec:
-      serviceAccountName: retail
+      serviceAccountName: NAMESPACE_PLACEHOLDER
       imagePullSecrets:
         - name: dockerhub-secret
       containers:
         - name: frontend
-          image: docker.io/technologybuildingblocks/retail-rag-retrieval:1.0.0
+          image: docker.io/technologybuildingblocks/retail-frontend:1.0.0
           imagePullPolicy: Always
           ports:
             - containerPort: 80
@@ -34,12 +34,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 8080
+              port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /
-              port: 8080
+              port: 80
             initialDelaySeconds: 10
             periodSeconds: 20

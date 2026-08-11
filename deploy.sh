@@ -3,11 +3,21 @@ set -euo pipefail
 
 # ---------------------------------------------------------------
 # Required environment variables (set before running this script)
-#   OC_TOKEN          OpenShift login token
-#   OC_SERVER         OpenShift API server URL
-#   DOCKER_USERNAME   Docker Hub username
-#   DOCKER_PASSWORD   Docker Hub password
-#   NAMESPACE         OpenShift namespace to deploy into
+#   OC_TOKEN              OpenShift login token
+#   OC_SERVER             OpenShift API server URL
+#   DOCKER_USERNAME       Docker Hub username
+#   DOCKER_PASSWORD       Docker Hub password
+#   NAMESPACE             OpenShift namespace to deploy into
+#
+# Optional — RAG stack (data-for-ai/rag-retrieval-fastapi-server)
+#   DEPLOY_RAG            Set to "true" to build and deploy the RAG server (default: false)
+#   WATSONX_URL           IBM Watsonx endpoint URL       (required when DEPLOY_RAG=true)
+#   WATSONX_API_KEY       IBM Watsonx API key            (required when DEPLOY_RAG=true)
+#   WATSONX_PROJECT_ID    IBM Watsonx project ID         (required when DEPLOY_RAG=true)
+#   MILVUS_HOST           Milvus vector DB hostname      (required when DEPLOY_RAG=true)
+#   MILVUS_PORT           Milvus vector DB port          (required when DEPLOY_RAG=true)
+#   MILVUS_USER           Milvus username                (required when DEPLOY_RAG=true)
+#   MILVUS_PASSWORD       Milvus password                (required when DEPLOY_RAG=true)
 # ---------------------------------------------------------------
 
 : "${OC_TOKEN:?OC_TOKEN env var is not set}"
@@ -15,6 +25,29 @@ set -euo pipefail
 : "${DOCKER_USERNAME:?DOCKER_USERNAME env var is not set}"
 : "${DOCKER_PASSWORD:?DOCKER_PASSWORD env var is not set}"
 : "${NAMESPACE:?NAMESPACE env var is not set}"
+
+# RAG deployment flag — defaults to false
+DEPLOY_RAG="${DEPLOY_RAG:-false}"
+
+# RAG variables — only validated when DEPLOY_RAG=true
+WATSONX_URL="${WATSONX_URL:-}"
+WATSONX_API_KEY="${WATSONX_API_KEY:-}"
+WATSONX_PROJECT_ID="${WATSONX_PROJECT_ID:-}"
+MILVUS_HOST="${MILVUS_HOST:-}"
+MILVUS_PORT="${MILVUS_PORT:-}"
+MILVUS_USER="${MILVUS_USER:-}"
+MILVUS_PASSWORD="${MILVUS_PASSWORD:-}"
+
+# Validate RAG vars early if DEPLOY_RAG=true
+if [[ "$DEPLOY_RAG" == "true" ]]; then
+    : "${WATSONX_URL:?WATSONX_URL is required when DEPLOY_RAG=true}"
+    : "${WATSONX_API_KEY:?WATSONX_API_KEY is required when DEPLOY_RAG=true}"
+    : "${WATSONX_PROJECT_ID:?WATSONX_PROJECT_ID is required when DEPLOY_RAG=true}"
+    : "${MILVUS_HOST:?MILVUS_HOST is required when DEPLOY_RAG=true}"
+    : "${MILVUS_PORT:?MILVUS_PORT is required when DEPLOY_RAG=true}"
+    : "${MILVUS_USER:?MILVUS_USER is required when DEPLOY_RAG=true}"
+    : "${MILVUS_PASSWORD:?MILVUS_PASSWORD is required when DEPLOY_RAG=true}"
+fi
 
 # ---------------------------------------------------------------
 # Detect OS
@@ -45,6 +78,7 @@ POSTGRES_LABEL="app=retail-postgres"
 
 BACKEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-backend:1.0.0"
 FRONTEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-frontend:1.0.0"
+RAG_IMAGE="docker.io/${DOCKER_USERNAME}/retail-rag-retrieval:1.0.0"
 
 GITHUB_ZIP_URL="https://github.com/SunilManika/retailsampleapp/archive/refs/heads/main.zip"
 
@@ -212,21 +246,36 @@ update_yaml_images() {
     # Handles both the local repo (NAMESPACE_PLACEHOLDER) and the downloaded zip
     # (which may still contain the original values: tbb, retail, techxchange).
     for f in "$k8s_dir/"*.yaml; do
-        sedi "s/namespace: tbb/namespace: ${NAMESPACE}/g"          "$f"
-        sedi "s/namespace: retail/namespace: ${NAMESPACE}/g"        "$f"
-        sedi "s/namespace: techxchange/namespace: ${NAMESPACE}/g"   "$f"
-        sedi "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g"               "$f"
+        # Namespace
+        sedi "s/namespace: tbb/namespace: ${NAMESPACE}/g"                       "$f"
+        sedi "s/namespace: retail/namespace: ${NAMESPACE}/g"                     "$f"
+        sedi "s/namespace: techxchange/namespace: ${NAMESPACE}/g"                "$f"
+        # Service account
+        sedi "s/serviceAccountName: tbb/serviceAccountName: ${NAMESPACE}/g"      "$f"
+        sedi "s/serviceAccountName: retail/serviceAccountName: ${NAMESPACE}/g"    "$f"
+        # RAG / JMeter placeholders
+        sedi "s|WATSONX_URL_PLACEHOLDER|${WATSONX_URL}|g"                        "$f"
+        sedi "s|WATSONX_API_KEY_PLACEHOLDER|${WATSONX_API_KEY}|g"                "$f"
+        sedi "s|WATSONX_PROJECT_ID_PLACEHOLDER|${WATSONX_PROJECT_ID}|g"          "$f"
+        sedi "s|MILVUS_HOST_PLACEHOLDER|${MILVUS_HOST}|g"                        "$f"
+        sedi "s|MILVUS_PORT_PLACEHOLDER|${MILVUS_PORT}|g"                        "$f"
+        sedi "s|MILVUS_USER_PLACEHOLDER|${MILVUS_USER}|g"                        "$f"
+        sedi "s|MILVUS_PASSWORD_PLACEHOLDER|${MILVUS_PASSWORD}|g"                "$f"
+        # JMeter backend route — resolved after deploy in a separate step
+        sedi "s|BACKEND_ROUTE_PLACEHOLDER|${NAMESPACE}|g"                         "$f"
+        # Catch-all for any remaining NAMESPACE_PLACEHOLDER
+        sedi "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g"                            "$f"
     done
 
-    # Patch the namespace.yaml name and labels
-    sedi "s/name: tbb/name: ${NAMESPACE}/g"          "$k8s_dir/namespace.yaml"
-    sedi "s/name: retail/name: ${NAMESPACE}/g"        "$k8s_dir/namespace.yaml"
-    sedi "s/name: techxchange/name: ${NAMESPACE}/g"   "$k8s_dir/namespace.yaml"
-    sedi "s/environment: tbb/environment: ${NAMESPACE}/g"          "$k8s_dir/namespace.yaml"
-    sedi "s/environment: retail/environment: ${NAMESPACE}/g"        "$k8s_dir/namespace.yaml"
-    sedi "s/environment: techxchange/environment: ${NAMESPACE}/g"   "$k8s_dir/namespace.yaml"
+    # Patch namespace.yaml name and labels (handles both placeholder and legacy values)
+    sedi "s/name: tbb/name: ${NAMESPACE}/g"                   "$k8s_dir/namespace.yaml"
+    sedi "s/name: retail/name: ${NAMESPACE}/g"                 "$k8s_dir/namespace.yaml"
+    sedi "s/name: techxchange/name: ${NAMESPACE}/g"            "$k8s_dir/namespace.yaml"
+    sedi "s/environment: tbb/environment: ${NAMESPACE}/g"      "$k8s_dir/namespace.yaml"
+    sedi "s/environment: retail/environment: ${NAMESPACE}/g"    "$k8s_dir/namespace.yaml"
+    sedi "s/environment: techxchange/environment: ${NAMESPACE}/g" "$k8s_dir/namespace.yaml"
 
-    info "Namespace set to: ${NAMESPACE} in all manifests"
+    info "Namespace set to '${NAMESPACE}' in all manifests"
 }
 
 # ---------------------------------------------------------------
@@ -252,13 +301,31 @@ create_docker_secret() {
 prepare_namespace() {
     step "Creating namespace and applying SCC"
     run_cmd "Apply namespace" "oc apply -f $HOME/retailsampleapp-main/k8s/namespace.yaml"
+    run_cmd "Create service account" \
+        "oc create serviceaccount $NAMESPACE -n $NAMESPACE || true"
     run_cmd "Apply SCC to service account" \
-        "oc adm policy add-scc-to-user anyuid -z techxchange -n $NAMESPACE"
+        "oc adm policy add-scc-to-user anyuid -z $NAMESPACE -n $NAMESPACE"
 }
 
 deploy_manifests() {
-    step "Applying Kubernetes manifests"
-    run_cmd "oc apply" "oc apply -f $HOME/retailsampleapp-main/k8s/"
+    step "Applying Kubernetes manifests (core)"
+    local k8s_dir="$HOME/retailsampleapp-main/k8s"
+    # Apply every yaml except the three RAG-specific ones
+    for f in "$k8s_dir/"*.yaml; do
+        case "$(basename "$f")" in
+            rag-deployment.yaml|rag-service.yaml|rag-route.yaml|rag-secrets.yaml) continue ;;
+        esac
+        run_cmd "Apply $(basename "$f")" "oc apply -f $f"
+    done
+}
+
+deploy_rag_manifests() {
+    step "Applying RAG manifests"
+    local k8s_dir="$HOME/retailsampleapp-main/k8s"
+    run_cmd "Apply rag-secrets.yaml"    "oc apply -f $k8s_dir/rag-secrets.yaml"
+    run_cmd "Apply rag-deployment.yaml" "oc apply -f $k8s_dir/rag-deployment.yaml"
+    run_cmd "Apply rag-service.yaml"    "oc apply -f $k8s_dir/rag-service.yaml"
+    run_cmd "Apply rag-route.yaml"      "oc apply -f $k8s_dir/rag-route.yaml"
 }
 
 # ---------------------------------------------------------------
@@ -269,6 +336,13 @@ build_and_push_backend() {
     cd "$HOME/retailsampleapp-main/backend/"
     run_cmd "Build backend" "podman build -t $BACKEND_IMAGE ."
     run_cmd "Push backend"  "podman push $BACKEND_IMAGE"
+}
+
+build_and_push_rag() {
+    step "Building & pushing RAG retrieval image"
+    cd "$HOME/retailsampleapp-main/data-for-ai/rag-retrieval-fastapi-server/"
+    run_cmd "Build RAG image" "podman build -t $RAG_IMAGE ."
+    run_cmd "Push RAG image"  "podman push $RAG_IMAGE"
 }
 
 build_and_push_frontend_initial() {
@@ -302,6 +376,12 @@ restart_deployments() {
     info "Restarting frontend"
     oc rollout restart deployment/retail-frontend -n "$NAMESPACE" > /dev/null
     (oc rollout status deployment/retail-frontend -n "$NAMESPACE" > /dev/null) & spinner $!
+
+    if [[ "$DEPLOY_RAG" == "true" ]]; then
+        info "Restarting RAG retrieval API"
+        oc rollout restart deployment/rag-retrieval-api -n "$NAMESPACE" > /dev/null
+        (oc rollout status deployment/rag-retrieval-api -n "$NAMESPACE" > /dev/null) & spinner $!
+    fi
 }
 
 load_database() {
@@ -329,7 +409,9 @@ load_database() {
 # ---------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------
-info "Platform: $OS ($ARCH)"
+info "Platform  : $OS ($ARCH)"
+info "Namespace : $NAMESPACE"
+info "Deploy RAG: $DEPLOY_RAG"
 
 install_prereqs
 install_oc_cli
@@ -345,15 +427,27 @@ run_cmd "Podman login to Docker Hub" \
 build_and_push_backend
 build_and_push_frontend_initial
 
+if [[ "$DEPLOY_RAG" == "true" ]]; then
+    build_and_push_rag
+fi
+
 oc_login
 create_docker_secret
 
 prepare_namespace
 deploy_manifests
 
+if [[ "$DEPLOY_RAG" == "true" ]]; then
+    deploy_rag_manifests
+fi
+
 rebuild_frontend_with_route
 restart_deployments
 load_database
 
 step "Deployment completed successfully"
-info "Retail App deployed — images built, database loaded, cluster updated."
+if [[ "$DEPLOY_RAG" == "true" ]]; then
+    info "Retail App + RAG retrieval API deployed — images built, database loaded, cluster updated."
+else
+    info "Retail App deployed (RAG skipped) — images built, database loaded, cluster updated."
+fi
