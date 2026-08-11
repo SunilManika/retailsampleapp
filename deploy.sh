@@ -418,35 +418,39 @@ restart_deployments() {
 }
 
 wait_for_postgres() {
-    info "Waiting for PostgreSQL pod to be Ready..."
-    local POD=""
+    # Writes progress to stderr so stdout is clean for POD name capture
+    echo "    [INFO] Waiting for PostgreSQL pod to be Ready..." >&2
+    local POD="" phase
     for _ in $(seq 1 24); do
         POD=$(oc get pod -n "$NAMESPACE" -l "$POSTGRES_LABEL" \
               -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
         if [[ -n "$POD" ]]; then
-            local phase
             phase=$(oc get pod "$POD" -n "$NAMESPACE" \
                     -o jsonpath='{.status.phase}' 2>/dev/null || true)
-            [[ "$phase" == "Running" ]] && { echo "$POD"; return 0; }
+            if [[ "$phase" == "Running" ]]; then
+                echo "$POD"
+                return 0
+            fi
         fi
         sleep 5
     done
-    fail "PostgreSQL pod not Running after 2 minutes."
+    echo "    [ERROR] PostgreSQL pod not Running after 2 minutes." >&2
+    exit 1
 }
 
 patch_database() {
     step "Patching database (users table)"
-    cd "$HOME/retailsampleapp-main"
 
     local POD
     POD=$(wait_for_postgres)
     info "PostgreSQL pod: $POD"
 
     # The postgres image bakes full_dump.sql into docker-entrypoint-initdb.d/
-    # and only runs it on a fresh empty volume — so data already exists on
-    # re-deploys. Apply a targeted UPDATE patch instead.
+    # which only runs on a fresh empty volume. On re-deploys the PVC already
+    # has data, so we apply a targeted UPDATE patch instead.
+    local PATCH_SRC="$HOME/retailsampleapp-main/postgresql/patch_users.sql"
     run_cmd "Copy patch SQL" \
-        "oc cp postgresql/patch_users.sql -n $NAMESPACE $POD:/tmp/patch_users.sql"
+        "oc cp $PATCH_SRC -n $NAMESPACE $POD:/tmp/patch_users.sql"
     run_cmd "Apply user patch" \
         "oc exec -n $NAMESPACE $POD -- bash -c 'psql -U retail_user -d retaildb -f /tmp/patch_users.sql'"
 }
