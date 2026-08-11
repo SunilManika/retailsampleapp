@@ -5,11 +5,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package definition
-COPY package.json ./
+# Copy package definitions
+COPY package.json package-lock.json* ./
 
 # Install dependencies
-RUN npm install
+# --legacy-peer-deps tolerates peer-dep version mismatches across the ecosystem
+RUN npm install --legacy-peer-deps
 
 # Copy application
 COPY . .

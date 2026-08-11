@@ -7,12 +7,14 @@ set -euo pipefail
 #   OC_SERVER         OpenShift API server URL
 #   DOCKER_USERNAME   Docker Hub username
 #   DOCKER_PASSWORD   Docker Hub password
+#   NAMESPACE         OpenShift namespace to deploy into
 # ---------------------------------------------------------------
 
 : "${OC_TOKEN:?OC_TOKEN env var is not set}"
 : "${OC_SERVER:?OC_SERVER env var is not set}"
 : "${DOCKER_USERNAME:?DOCKER_USERNAME env var is not set}"
 : "${DOCKER_PASSWORD:?DOCKER_PASSWORD env var is not set}"
+: "${NAMESPACE:?NAMESPACE env var is not set}"
 
 # ---------------------------------------------------------------
 # Detect OS
@@ -38,7 +40,7 @@ esac
 OPENSHIFT_VERSION="4.18.28"
 JMETER_VERSION="5.6.3"
 
-NAMESPACE="tbb"
+# NAMESPACE is sourced from the environment (required, validated above)
 POSTGRES_LABEL="app=retail-postgres"
 
 BACKEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-backend:1.0.0"
