@@ -289,24 +289,22 @@ oc_login() {
         "oc login --token=$OC_TOKEN --server=$OC_SERVER --insecure-skip-tls-verify=true"
 }
 
-create_docker_secret() {
-    step "Creating Docker registry pull secret"
-    run_cmd "Creating dockerhub-secret" \
+prepare_namespace() {
+    step "Creating namespace and applying SCC"
+    run_cmd "Apply namespace"         "oc apply -f $HOME/retailsampleapp-main/k8s/namespace.yaml"
+    run_cmd "Create service account"  "oc create serviceaccount $NAMESPACE -n $NAMESPACE || true"
+    run_cmd "Apply SCC to service account" \
+        "oc adm policy add-scc-to-user anyuid -z $NAMESPACE -n $NAMESPACE"
+
+    # Secret must be created after the namespace exists
+    run_cmd "Create dockerhub-secret" \
         "oc create secret docker-registry dockerhub-secret \
             --docker-server=docker.io \
             --docker-username=$DOCKER_USERNAME \
             --docker-password=$DOCKER_PASSWORD \
             --docker-email=${DOCKER_EMAIL:-noreply@example.com} \
             -n $NAMESPACE || true"
-}
 
-prepare_namespace() {
-    step "Creating namespace and applying SCC"
-    run_cmd "Apply namespace" "oc apply -f $HOME/retailsampleapp-main/k8s/namespace.yaml"
-    run_cmd "Create service account" \
-        "oc create serviceaccount $NAMESPACE -n $NAMESPACE || true"
-    run_cmd "Apply SCC to service account" \
-        "oc adm policy add-scc-to-user anyuid -z $NAMESPACE -n $NAMESPACE"
     run_cmd "Link pull secret to service account" \
         "oc secrets link $NAMESPACE dockerhub-secret --for=pull -n $NAMESPACE"
 }
@@ -469,7 +467,6 @@ if [[ "$DEPLOY_RAG" == "true" ]]; then
 fi
 
 oc_login
-create_docker_secret
 
 prepare_namespace
 deploy_manifests
