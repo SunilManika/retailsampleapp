@@ -5,7 +5,9 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
+const https_module = require("https");
 const NodeCache = require("node-cache");
+const { execSync } = require("child_process");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "changeme-in-prod";
@@ -1249,6 +1251,128 @@ router.get("/products/:productId/insights", async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+/* ---------------------------------------------------------------
+ * CLUSTER OPERATIONS  (Load Testing / System Analysis)
+ * All four endpoints receive clusterServerUrl + clusterToken in
+ * the POST body and call `oc` (OpenShift CLI) directly.
+ * --------------------------------------------------------------- */
+
+// Helper: run an oc command with the supplied credentials
+function ocExec(args, serverUrl, token) {
+  const base = `oc --server=${serverUrl} --token=${token} --insecure-skip-tls-verify=true`;
+  return execSync(`${base} ${args}`, { encoding: "utf8", timeout: 15000 });
+}
+
+// POST /api/admin/cluster/test
+router.post("/admin/cluster/test", authMiddleware, adminOnly, async (req, res) => {
+  const { clusterServerUrl, clusterToken } = req.body;
+  if (!clusterServerUrl || !clusterToken) {
+    return res.status(400).json({ message: "clusterServerUrl and clusterToken are required" });
+  }
+  try {
+    const out = ocExec("whoami", clusterServerUrl, clusterToken);
+    res.json({ success: true, message: `Connected as: ${out.trim()}` });
+  } catch (err) {
+    console.error("[CLUSTER TEST]", err.message);
+    res.status(502).json({ success: false, message: `Connection failed: ${err.message.split("\n")[0]}` });
+  }
+});
+
+// POST /api/admin/namespaces
+router.post("/admin/namespaces", authMiddleware, adminOnly, async (req, res) => {
+  const { clusterServerUrl, clusterToken } = req.body;
+  if (!clusterServerUrl || !clusterToken) {
+    return res.status(400).json({ message: "clusterServerUrl and clusterToken are required" });
+  }
+  try {
+    const out = ocExec(
+      `get namespaces -o jsonpath='{.items[*].metadata.name}'`,
+      clusterServerUrl, clusterToken
+    );
+    const all = out.trim().split(/\s+/).filter(Boolean);
+    const retail = all.filter(n => n.startsWith("retail"));
+    res.json({ success: true, namespaces: retail.length ? retail : all });
+  } catch (err) {
+    console.error("[NAMESPACES]", err.message);
+    res.status(502).json({ success: false, message: `Failed to list namespaces: ${err.message.split("\n")[0]}` });
+  }
+});
+
+// POST /api/admin/pods/metrics
+router.post("/admin/pods/metrics", authMiddleware, adminOnly, async (req, res) => {
+  const { clusterServerUrl, clusterToken, namespace } = req.body;
+  if (!clusterServerUrl || !clusterToken || !namespace) {
+    return res.status(400).json({ message: "clusterServerUrl, clusterToken and namespace are required" });
+  }
+  try {
+    const out = ocExec(
+      `get pods -n ${namespace} -o json`,
+      clusterServerUrl, clusterToken
+    );
+    const podList = JSON.parse(out);
+    const pods = podList.items.map(pod => {
+      const containers = pod.spec.containers || [];
+      const totalCpuReq  = containers.reduce((s, c) => s + parseCpu(c.resources?.requests?.cpu),  0);
+      const totalMemReq  = containers.reduce((s, c) => s + parseMem(c.resources?.requests?.memory), 0);
+      const totalCpuLim  = containers.reduce((s, c) => s + parseCpu(c.resources?.limits?.cpu),  0);
+      const totalMemLim  = containers.reduce((s, c) => s + parseMem(c.resources?.limits?.memory), 0);
+      return {
+        name:         pod.metadata.name,
+        status:       pod.status.phase,
+        ready:        pod.status.containerStatuses?.every(c => c.ready) ?? false,
+        cpuRequest:   `${totalCpuReq}m`,
+        cpuLimit:     `${totalCpuLim}m`,
+        memoryRequest:`${totalMemReq}Mi`,
+        memoryLimit:  `${totalMemLim}Mi`,
+        restarts:     pod.status.containerStatuses?.reduce((s, c) => s + c.restartCount, 0) ?? 0,
+      };
+    });
+    res.json({ success: true, pods, namespace });
+  } catch (err) {
+    console.error("[POD METRICS]", err.message);
+    res.status(502).json({ success: false, message: `Failed to get pod metrics: ${err.message.split("\n")[0]}` });
+  }
+});
+
+// POST /api/admin/jmeter/run
+router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => {
+  const { backendRoute, clusterServerUrl, clusterToken, namespace } = req.body;
+  if (!backendRoute || !clusterServerUrl || !clusterToken || !namespace) {
+    return res.status(400).json({ message: "backendRoute, clusterServerUrl, clusterToken and namespace are required" });
+  }
+  try {
+    // Patch the JMeter job's BACKEND_ROUTE env var then apply it
+    ocExec(
+      `set env job/jmeter-simulation BACKEND_ROUTE=https://${backendRoute}/api -n ${namespace} --overwrite`,
+      clusterServerUrl, clusterToken
+    );
+    // Delete any previous completed job so we can re-run
+    try { ocExec(`delete job jmeter-simulation -n ${namespace}`, clusterServerUrl, clusterToken); } catch (_) {}
+    ocExec(
+      `create job jmeter-simulation --image=docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev -n ${namespace} -- bash /jmeter/run_spike.sh https://${backendRoute}/api`,
+      clusterServerUrl, clusterToken
+    );
+    res.json({ success: true, message: `JMeter simulation started in namespace ${namespace}` });
+  } catch (err) {
+    console.error("[JMETER RUN]", err.message);
+    res.status(502).json({ success: false, message: `Failed to start JMeter: ${err.message.split("\n")[0]}` });
+  }
+});
+
+// CPU/memory unit parsers
+function parseCpu(val) {
+  if (!val) return 0;
+  if (val.endsWith("m")) return parseInt(val);
+  return parseInt(val) * 1000;
+}
+function parseMem(val) {
+  if (!val) return 0;
+  if (val.endsWith("Mi")) return parseInt(val);
+  if (val.endsWith("Gi")) return Math.round(parseFloat(val) * 1024);
+  if (val.endsWith("Ki")) return Math.round(parseInt(val) / 1024);
+  return parseInt(val);
+}
 
 module.exports = router;
 

@@ -136,23 +136,23 @@ export async function getProductInsights(productId, productName = null) {
 /* ---------------------
     SYSTEM ANALYSIS / CLUSTER OPERATIONS (NEW)
 ----------------------*/
-export async function testClusterConnection() {
-  const res = await api.get("/admin/cluster/test");
+export async function testClusterConnection(clusterServerUrl, clusterToken) {
+  const res = await api.post("/admin/cluster/test", { clusterServerUrl, clusterToken });
   return res.data;
 }
 
-export async function runJMeterSimulation(config) {
-  const res = await api.post("/admin/jmeter/run", config);
+export async function runJMeterSimulation(backendRoute, clusterServerUrl, clusterToken, namespace) {
+  const res = await api.post("/admin/jmeter/run", { backendRoute, clusterServerUrl, clusterToken, namespace });
   return res.data;
 }
 
-export async function getPodMetrics() {
-  const res = await api.get("/admin/pods/metrics");
+export async function getPodMetrics(clusterServerUrl, clusterToken, namespace) {
+  const res = await api.post("/admin/pods/metrics", { clusterServerUrl, clusterToken, namespace });
   return res.data;
 }
 
-export async function getNamespaces() {
-  const res = await api.get("/admin/namespaces");
+export async function getNamespaces(clusterServerUrl, clusterToken) {
+  const res = await api.post("/admin/namespaces", { clusterServerUrl, clusterToken });
   return res.data;
 }
 
