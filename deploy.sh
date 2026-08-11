@@ -371,18 +371,29 @@ build_and_push_frontend_initial() {
     run_cmd "Push frontend (initial)" "podman push $FRONTEND_IMAGE"
 }
 
-patch_jmeter_route() {
-    local k8s_dir="$HOME/retailsampleapp-main/k8s"
-    BACKEND_ROUTE=$(oc get route -n "$NAMESPACE" | awk '/retail-backend/{print $2}' || true)
+resolve_routes() {
+    step "Resolving OpenShift routes"
+    BACKEND_ROUTE=$(oc get route retail-backend -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || true)
     [[ -z "$BACKEND_ROUTE" ]] && fail "Could not retrieve backend route."
-    info "Backend route: $BACKEND_ROUTE"
+    info "Backend route : $BACKEND_ROUTE"
+
+    FRONTEND_ROUTE=$(oc get route retail-frontend -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || true)
+    [[ -z "$FRONTEND_ROUTE" ]] && fail "Could not retrieve frontend route."
+    info "Frontend route: $FRONTEND_ROUTE"
+}
+
+patch_manifests_with_routes() {
+    local k8s_dir="$HOME/retailsampleapp-main/k8s"
+    step "Patching manifests with live routes"
+    # JMeter job — backend API URL
     sedi "s|BACKEND_ROUTE_PLACEHOLDER|https://${BACKEND_ROUTE}/api|g" "$k8s_dir/jmeter-job.yaml"
+    # Backend deployment — CORS origin must match the frontend URL
+    sedi "s|FRONTEND_URL_PLACEHOLDER|https://${FRONTEND_ROUTE}|g"     "$k8s_dir/backend-deployment.yaml"
+    # Re-apply backend deployment so the new FRONTEND_URL env var takes effect
+    run_cmd "Re-apply backend deployment" "oc apply -f $k8s_dir/backend-deployment.yaml"
 }
 
 rebuild_frontend_with_route() {
-    step "Fetching backend route and patching JMeter manifest"
-    patch_jmeter_route
-
     step "Rebuilding frontend image with backend API URL"
     cd "$HOME/retailsampleapp-main/frontend/"
     run_cmd "Build frontend (final)" \
@@ -467,6 +478,8 @@ if [[ "$DEPLOY_RAG" == "true" ]]; then
     deploy_rag_manifests
 fi
 
+resolve_routes
+patch_manifests_with_routes
 rebuild_frontend_with_route
 restart_deployments
 load_database

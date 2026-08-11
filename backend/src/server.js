@@ -48,9 +48,19 @@ const IBM_VERIFY_CONFIG = IBM_VERIFY_ENABLED ? {
 } : null;
 
 // Middleware
-app.use(cors({ 
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
-  credentials: true 
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin '${origin}' not allowed`));
+  },
+  credentials: true
 }));
 app.use(express.json());
 

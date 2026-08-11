@@ -47,6 +47,8 @@ spec:
               value: "42699"
             - name: RAG_RETRIEVAL_URL
               value: "http://rag-retrieval-api:8080"
+            - name: FRONTEND_URL
+              value: "FRONTEND_URL_PLACEHOLDER"
           ports:
             - containerPort: 4000
           resources:

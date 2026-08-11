@@ -316,7 +316,14 @@ function CatalogPage({ onAddToCart, onAddToWishlist, onProductClick, externalSea
             style={{ cursor: "pointer" }}
           >
             <div className="product-image">
-              <img src={p.image_url} alt={p.name} />
+              <img
+                src={p.image_url}
+                alt={p.name}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = `https://placehold.co/400x300/f7f8fa/9ca3af?text=${encodeURIComponent(p.name)}`;
+                }}
+              />
             </div>
 
             <div className="product-body">
