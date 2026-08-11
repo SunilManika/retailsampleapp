@@ -417,26 +417,38 @@ restart_deployments() {
     fi
 }
 
-load_database() {
-    step "Loading database"
-    cd "$HOME/retailsampleapp-main"
-
-    info "Waiting for PostgreSQL pod..."
+wait_for_postgres() {
+    info "Waiting for PostgreSQL pod to be Ready..."
     local POD=""
-    for _ in $(seq 1 10); do
+    for _ in $(seq 1 24); do
         POD=$(oc get pod -n "$NAMESPACE" -l "$POSTGRES_LABEL" \
               -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-        [[ -n "$POD" ]] && break
+        if [[ -n "$POD" ]]; then
+            local phase
+            phase=$(oc get pod "$POD" -n "$NAMESPACE" \
+                    -o jsonpath='{.status.phase}' 2>/dev/null || true)
+            [[ "$phase" == "Running" ]] && { echo "$POD"; return 0; }
+        fi
         sleep 5
     done
+    fail "PostgreSQL pod not Running after 2 minutes."
+}
 
-    [[ -z "$POD" ]] && fail "PostgreSQL pod not found after waiting."
+patch_database() {
+    step "Patching database (users table)"
+    cd "$HOME/retailsampleapp-main"
+
+    local POD
+    POD=$(wait_for_postgres)
     info "PostgreSQL pod: $POD"
 
-    run_cmd "Copy SQL dump" \
-        "oc cp postgresql/full_dump.sql -n $NAMESPACE $POD:/tmp/full_dump.sql"
-    run_cmd "Import database" \
-        "oc exec -n $NAMESPACE $POD -- bash -c 'psql -U retail_user -d retaildb < /tmp/full_dump.sql'"
+    # The postgres image bakes full_dump.sql into docker-entrypoint-initdb.d/
+    # and only runs it on a fresh empty volume — so data already exists on
+    # re-deploys. Apply a targeted UPDATE patch instead.
+    run_cmd "Copy patch SQL" \
+        "oc cp postgresql/patch_users.sql -n $NAMESPACE $POD:/tmp/patch_users.sql"
+    run_cmd "Apply user patch" \
+        "oc exec -n $NAMESPACE $POD -- bash -c 'psql -U retail_user -d retaildb -f /tmp/patch_users.sql'"
 }
 
 # ---------------------------------------------------------------
@@ -479,7 +491,7 @@ resolve_routes
 patch_manifests_with_routes
 rebuild_frontend_with_route
 restart_deployments
-load_database
+patch_database
 
 step "Deployment completed successfully"
 if [[ "$DEPLOY_RAG" == "true" ]]; then
