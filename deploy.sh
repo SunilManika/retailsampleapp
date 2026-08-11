@@ -78,9 +78,11 @@ POSTGRES_LABEL="app=retail-postgres"
 
 BACKEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-backend:1.0.0"
 FRONTEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-frontend:1.0.0"
+POSTGRES_IMAGE="docker.io/${DOCKER_USERNAME}/retail-postgresql:1.0.0"
 RAG_IMAGE="docker.io/${DOCKER_USERNAME}/retail-rag-retrieval:1.0.0"
 
-GITHUB_ZIP_URL="https://github.com/SunilManika/retailsampleapp/archive/refs/heads/main.zip"
+GITHUB_REPO="${GITHUB_REPO:-SunilManika/retailsampleapp}"
+GITHUB_ZIP_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip"
 
 # Install tools under $HOME so root is never needed
 TOOLS_DIR="$HOME/.local/retaildeploy"
@@ -238,21 +240,20 @@ update_yaml_images() {
     step "Patching Kubernetes manifests"
     local k8s_dir="$HOME/retailsampleapp-main/k8s"
 
-    # Replace Docker Hub username in deployment manifests
-    sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g" "$k8s_dir/frontend-deployment.yaml"
-    sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g" "$k8s_dir/backend-deployment.yaml"
-
-    # Replace all known hardcoded namespace values with $NAMESPACE in every yaml.
-    # Handles both the local repo (NAMESPACE_PLACEHOLDER) and the downloaded zip
+    # Replace all known hardcoded/placeholder values in every yaml.
+    # Handles both the local repo (_PLACEHOLDER) and the downloaded zip
     # (which may still contain the original values: tbb, retail, techxchange).
     for f in "$k8s_dir/"*.yaml; do
+        # Docker Hub username
+        sedi "s|DOCKER_USERNAME_PLACEHOLDER|${DOCKER_USERNAME}|g"                "$f"
+        sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g"                    "$f"
         # Namespace
-        sedi "s/namespace: tbb/namespace: ${NAMESPACE}/g"                       "$f"
+        sedi "s/namespace: tbb/namespace: ${NAMESPACE}/g"                        "$f"
         sedi "s/namespace: retail/namespace: ${NAMESPACE}/g"                     "$f"
         sedi "s/namespace: techxchange/namespace: ${NAMESPACE}/g"                "$f"
         # Service account
         sedi "s/serviceAccountName: tbb/serviceAccountName: ${NAMESPACE}/g"      "$f"
-        sedi "s/serviceAccountName: retail/serviceAccountName: ${NAMESPACE}/g"    "$f"
+        sedi "s/serviceAccountName: retail/serviceAccountName: ${NAMESPACE}/g"   "$f"
         # RAG / JMeter placeholders
         sedi "s|WATSONX_URL_PLACEHOLDER|${WATSONX_URL}|g"                        "$f"
         sedi "s|WATSONX_API_KEY_PLACEHOLDER|${WATSONX_API_KEY}|g"                "$f"
@@ -261,8 +262,8 @@ update_yaml_images() {
         sedi "s|MILVUS_PORT_PLACEHOLDER|${MILVUS_PORT}|g"                        "$f"
         sedi "s|MILVUS_USER_PLACEHOLDER|${MILVUS_USER}|g"                        "$f"
         sedi "s|MILVUS_PASSWORD_PLACEHOLDER|${MILVUS_PASSWORD}|g"                "$f"
-        # JMeter backend route — resolved after deploy in a separate step
-        sedi "s|BACKEND_ROUTE_PLACEHOLDER|${NAMESPACE}|g"                         "$f"
+        # JMeter backend route — substituted after the route is known (see rebuild_frontend_with_route)
+        # Leave BACKEND_ROUTE_PLACEHOLDER as-is here; it is patched in patch_jmeter_route()
         # Catch-all for any remaining NAMESPACE_PLACEHOLDER
         sedi "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g"                            "$f"
     done
@@ -294,7 +295,7 @@ create_docker_secret() {
             --docker-server=docker.io \
             --docker-username=$DOCKER_USERNAME \
             --docker-password=$DOCKER_PASSWORD \
-            --docker-email=test123@test.com \
+            --docker-email=${DOCKER_EMAIL:-noreply@example.com} \
             -n $NAMESPACE || true"
 }
 
@@ -305,6 +306,8 @@ prepare_namespace() {
         "oc create serviceaccount $NAMESPACE -n $NAMESPACE || true"
     run_cmd "Apply SCC to service account" \
         "oc adm policy add-scc-to-user anyuid -z $NAMESPACE -n $NAMESPACE"
+    run_cmd "Link pull secret to service account" \
+        "oc secrets link $NAMESPACE dockerhub-secret --for=pull -n $NAMESPACE"
 }
 
 deploy_manifests() {
@@ -331,17 +334,24 @@ deploy_rag_manifests() {
 # ---------------------------------------------------------------
 # Container images
 # ---------------------------------------------------------------
+build_and_push_postgres() {
+    step "Building & pushing postgres image"
+    cd "$HOME/retailsampleapp-main/postgresql/"
+    run_cmd "Build postgres" "podman build --platform linux/amd64 -t $POSTGRES_IMAGE ."
+    run_cmd "Push postgres"  "podman push $POSTGRES_IMAGE"
+}
+
 build_and_push_backend() {
     step "Building & pushing backend image"
     cd "$HOME/retailsampleapp-main/backend/"
-    run_cmd "Build backend" "podman build -t $BACKEND_IMAGE ."
+    run_cmd "Build backend" "podman build --platform linux/amd64 -t $BACKEND_IMAGE ."
     run_cmd "Push backend"  "podman push $BACKEND_IMAGE"
 }
 
 build_and_push_rag() {
     step "Building & pushing RAG retrieval image"
     cd "$HOME/retailsampleapp-main/data-for-ai/rag-retrieval-fastapi-server/"
-    run_cmd "Build RAG image" "podman build -t $RAG_IMAGE ."
+    run_cmd "Build RAG image" "podman build --platform linux/amd64 -t $RAG_IMAGE ."
     run_cmd "Push RAG image"  "podman push $RAG_IMAGE"
 }
 
@@ -349,20 +359,26 @@ build_and_push_frontend_initial() {
     step "Building & pushing frontend image (initial, no backend URL)"
     cd "$HOME/retailsampleapp-main/frontend/"
     run_cmd "Build frontend (initial)" \
-        "podman build -t $FRONTEND_IMAGE --build-arg VITE_API_BASE_URL='' ."
+        "podman build --platform linux/amd64 -t $FRONTEND_IMAGE --build-arg VITE_API_BASE_URL='' ."
     run_cmd "Push frontend (initial)" "podman push $FRONTEND_IMAGE"
 }
 
-rebuild_frontend_with_route() {
-    step "Fetching backend route"
+patch_jmeter_route() {
+    local k8s_dir="$HOME/retailsampleapp-main/k8s"
     BACKEND_ROUTE=$(oc get route -n "$NAMESPACE" | awk '/retail-backend/{print $2}' || true)
     [[ -z "$BACKEND_ROUTE" ]] && fail "Could not retrieve backend route."
     info "Backend route: $BACKEND_ROUTE"
+    sedi "s|BACKEND_ROUTE_PLACEHOLDER|https://${BACKEND_ROUTE}/api|g" "$k8s_dir/jmeter-job.yaml"
+}
+
+rebuild_frontend_with_route() {
+    step "Fetching backend route and patching JMeter manifest"
+    patch_jmeter_route
 
     step "Rebuilding frontend image with backend API URL"
     cd "$HOME/retailsampleapp-main/frontend/"
     run_cmd "Build frontend (final)" \
-        "podman build -t $FRONTEND_IMAGE --build-arg VITE_API_BASE_URL=https://$BACKEND_ROUTE/api ."
+        "podman build --platform linux/amd64 -t $FRONTEND_IMAGE --build-arg VITE_API_BASE_URL=https://$BACKEND_ROUTE/api ."
     run_cmd "Push frontend (final)" "podman push $FRONTEND_IMAGE"
 }
 
@@ -401,7 +417,7 @@ load_database() {
     info "PostgreSQL pod: $POD"
 
     run_cmd "Copy SQL dump" \
-        "oc cp postgres/full_dump.sql -n $NAMESPACE $POD:/tmp/full_dump.sql"
+        "oc cp postgresql/full_dump.sql -n $NAMESPACE $POD:/tmp/full_dump.sql"
     run_cmd "Import database" \
         "oc exec -n $NAMESPACE $POD -- bash -c 'psql -U retail_user -d retaildb < /tmp/full_dump.sql'"
 }
@@ -424,6 +440,7 @@ update_yaml_images
 run_cmd "Podman login to Docker Hub" \
     "podman login -u ${DOCKER_USERNAME} -p '${DOCKER_PASSWORD}' docker.io"
 
+build_and_push_postgres
 build_and_push_backend
 build_and_push_frontend_initial
 

@@ -20,7 +20,7 @@ spec:
         - name: dockerhub-secret
       containers:
         - name: frontend
-          image: docker.io/technologybuildingblocks/retail-frontend:1.0.0
+          image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-frontend:1.0.0
           imagePullPolicy: Always
           ports:
             - containerPort: 80

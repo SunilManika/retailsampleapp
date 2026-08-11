@@ -20,7 +20,7 @@ spec:
         - name: dockerhub-secret
       containers:
         - name: postgres
-          image: docker.io/technologybuildingblocks/retail-postgresql:1.0.0
+          image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-postgresql:1.0.0
           env:
             - name: POSTGRES_DB
               value: retaildb

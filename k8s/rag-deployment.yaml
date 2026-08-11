@@ -20,7 +20,7 @@ spec:
         - name: dockerhub-secret
       containers:
         - name: rag-api
-          image: docker.io/technologybuildingblocks/retail-rag-retrieval:1.0.0
+          image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-rag-retrieval:1.0.0
           imagePullPolicy: Always
           env:
             - name: HOST

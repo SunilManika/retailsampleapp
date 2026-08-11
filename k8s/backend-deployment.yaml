@@ -20,7 +20,7 @@ spec:
         - name: dockerhub-secret
       containers:
         - name: backend
-          image: docker.io/technologybuildingblocks/retail-backend:1.0.0
+          image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-backend:1.0.0
           imagePullPolicy: Always
           env:
             - name: DB_HOST
