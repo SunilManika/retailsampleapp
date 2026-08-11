@@ -2,7 +2,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: retail-backend-hpa
-  namespace: tbb
+  namespace: NAMESPACE_PLACEHOLDER
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

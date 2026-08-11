@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rag-retrieval-api
-  namespace: tbb
+  namespace: NAMESPACE_PLACEHOLDER
   labels:
     app: rag-retrieval-api
 spec:

@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: jmeter-simulation
-  namespace: retail
+  namespace: NAMESPACE_PLACEHOLDER
 spec:
   ttlSecondsAfterFinished: 3600  # Clean up job after 1 hour
   backoffLimit: 0  # Don't retry on failure

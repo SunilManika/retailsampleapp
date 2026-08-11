@@ -202,10 +202,31 @@ download_application() {
 
 update_yaml_images() {
     step "Patching Kubernetes manifests"
-    sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g" "$HOME/retailsampleapp-main/k8s/frontend-deployment.yaml"
-    sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g" "$HOME/retailsampleapp-main/k8s/backend-deployment.yaml"
-    sedi "s/namespace: tbb/namespace: ${NAMESPACE}/g"     "$HOME/retailsampleapp-main/k8s/"*.yaml
-    sedi "s/name: tbb/name: $NAMESPACE/g"                 "$HOME/retailsampleapp-main/k8s/namespace.yaml"
+    local k8s_dir="$HOME/retailsampleapp-main/k8s"
+
+    # Replace Docker Hub username in deployment manifests
+    sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g" "$k8s_dir/frontend-deployment.yaml"
+    sedi "s/technologybuildingblocks/${DOCKER_USERNAME}/g" "$k8s_dir/backend-deployment.yaml"
+
+    # Replace all known hardcoded namespace values with $NAMESPACE in every yaml.
+    # Handles both the local repo (NAMESPACE_PLACEHOLDER) and the downloaded zip
+    # (which may still contain the original values: tbb, retail, techxchange).
+    for f in "$k8s_dir/"*.yaml; do
+        sedi "s/namespace: tbb/namespace: ${NAMESPACE}/g"          "$f"
+        sedi "s/namespace: retail/namespace: ${NAMESPACE}/g"        "$f"
+        sedi "s/namespace: techxchange/namespace: ${NAMESPACE}/g"   "$f"
+        sedi "s/NAMESPACE_PLACEHOLDER/${NAMESPACE}/g"               "$f"
+    done
+
+    # Patch the namespace.yaml name and labels
+    sedi "s/name: tbb/name: ${NAMESPACE}/g"          "$k8s_dir/namespace.yaml"
+    sedi "s/name: retail/name: ${NAMESPACE}/g"        "$k8s_dir/namespace.yaml"
+    sedi "s/name: techxchange/name: ${NAMESPACE}/g"   "$k8s_dir/namespace.yaml"
+    sedi "s/environment: tbb/environment: ${NAMESPACE}/g"          "$k8s_dir/namespace.yaml"
+    sedi "s/environment: retail/environment: ${NAMESPACE}/g"        "$k8s_dir/namespace.yaml"
+    sedi "s/environment: techxchange/environment: ${NAMESPACE}/g"   "$k8s_dir/namespace.yaml"
+
+    info "Namespace set to: ${NAMESPACE} in all manifests"
 }
 
 # ---------------------------------------------------------------

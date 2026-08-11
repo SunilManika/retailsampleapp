@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: retail-backend
-  namespace: tbb
+  namespace: NAMESPACE_PLACEHOLDER
   labels:
     app: retail-backend
 spec:
