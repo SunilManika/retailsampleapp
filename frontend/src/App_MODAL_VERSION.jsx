@@ -382,8 +382,8 @@ function CartPage({ showToast }) {
                       onChange={(e) => qty(item.cart_item_id, e.target.value)}
                     />
                   </td>
-                  <td>₹{item.price}</td>
-                  <td>₹{(item.price * item.quantity).toFixed(2)}</td>
+                  <td>${item.price}</td>
+                  <td>${(item.price * item.quantity).toFixed(2)}</td>
                   <td>
                     <button
                       className="btn-secondary-sm"
@@ -397,7 +397,7 @@ function CartPage({ showToast }) {
             </tbody>
           </table>
 
-          <h3>Total: ₹{cart.total}</h3>
+          <h3>Total: ${cart.total}</h3>
 
           <div className="checkout-section">
             <label>

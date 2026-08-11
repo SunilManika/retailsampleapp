@@ -104,6 +104,7 @@
   font-size: 16px;
   color: #6b7280;
   font-weight: 500;
+}
 
 /* ===========================
    PROGRESSIVE LOADING STYLES
@@ -216,8 +217,6 @@
   100% {
     background-position: 200% 0;
   }
-}
-
 }
 
 .modal-body {
@@ -582,10 +581,10 @@
 .sparkles {
   position: absolute;
   font-size: 32px;
-  animation: pulse 2s ease-in-out infinite;
+  animation: pulse-sparkle 2s ease-in-out infinite;
 }
 
-@keyframes pulse {
+@keyframes pulse-sparkle {
   0%, 100% {
     transform: scale(1);
     opacity: 1;
