@@ -79,6 +79,7 @@ POSTGRES_LABEL="app=retail-postgres"
 BACKEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-backend:1.0.0"
 FRONTEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-frontend:1.0.0"
 POSTGRES_IMAGE="docker.io/${DOCKER_USERNAME}/retail-postgresql:1.0.0"
+JMETER_IMAGE="docker.io/${DOCKER_USERNAME}/retail-jmeter:1.0.0-dev"
 RAG_IMAGE="docker.io/${DOCKER_USERNAME}/retail-rag-retrieval:1.0.0"
 
 GITHUB_REPO="${GITHUB_REPO:-SunilManika/retailsampleapp}"
@@ -341,6 +342,13 @@ build_and_push_postgres() {
     run_cmd "Push postgres"  "podman push $POSTGRES_IMAGE"
 }
 
+build_and_push_jmeter() {
+    step "Building & pushing JMeter image"
+    cd "$HOME/retailsampleapp-main/jmeter/"
+    run_cmd "Build JMeter" "podman build --platform linux/amd64 -t $JMETER_IMAGE ."
+    run_cmd "Push JMeter"  "podman push $JMETER_IMAGE"
+}
+
 build_and_push_backend() {
     step "Building & pushing backend image"
     cd "$HOME/retailsampleapp-main/backend/"
@@ -441,6 +449,7 @@ run_cmd "Podman login to Docker Hub" \
     "podman login -u ${DOCKER_USERNAME} -p '${DOCKER_PASSWORD}' docker.io"
 
 build_and_push_postgres
+build_and_push_jmeter
 build_and_push_backend
 build_and_push_frontend_initial
 
