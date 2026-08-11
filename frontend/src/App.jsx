@@ -143,7 +143,7 @@ function Navbar({ user, onLogout, searchValue, onSearchChange, onSearch }) {
  * Login Page
  * ========================================================== */
 function LoginPage({ onLogin, onLoginSuccess }) {
-  const [username, setUsername] = useState("aarav.sharma");
+  const [username, setUsername] = useState("james.wilson");
   const [password, setPassword] = useState("Password@123");
   const [error, setError] = useState("");
   const navigate = useNavigate();
