@@ -174,7 +174,7 @@ function AdminDashboardPage() {
             )}
             {metricCard(
               "Total Revenue",
-              `₹${Number(metrics.total_revenue || 0).toFixed(2)}`,
+              `${Number(metrics.total_revenue || 0).toFixed(2)}`,
               "#ea580c"
             )}
             {metricCard("Total Orders", metrics.total_orders ?? 0, "#0f766e")}

@@ -225,7 +225,7 @@ function ProductInsightsModal({ productId, onClose, ragEnabled = false }) {
                 <div className="modal-badge">✨ AI-Powered Insights</div>
                 <h2 className="modal-product-title">{product.name}</h2>
                 <div className="modal-product-meta">
-                  <span className="modal-price">₹{product.price}</span>
+                  <span className="modal-price">${product.price}</span>
                   <span className="modal-stock">
                     {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
                   </span>

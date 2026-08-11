@@ -292,7 +292,7 @@ function CatalogPage({ onAddToCart, onAddToWishlist, onProductClick }) {
             <div className="product-body">
               <h3 className="product-name">{p.name}</h3>
               <div className="product-meta">
-                <span className="product-price">₹{p.price}</span>
+                <span className="product-price">${p.price}</span>
                 <span className="product-stock">Stock {p.stock}</span>
               </div>
 
@@ -406,7 +406,7 @@ function CartPage({ showToast }) {
                       onChange={(e) => qty(item.cart_item_id, e.target.value)}
                     />
                   </td>
-                  <td>₹{item.price}</td>
+                  <td>${item.price}</td>
                   <td>₹{(item.price * item.quantity).toFixed(2)}</td>
                   <td>
                     <button

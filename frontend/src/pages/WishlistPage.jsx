@@ -42,7 +42,7 @@ function WishlistPage() {
                 <h3 className="product-name">{item.name}</h3>
                 <div className="product-meta">
                   <span className="product-price">
-                    ₹{Number(item.price).toFixed(2)}
+                    ${Number(item.price).toFixed(2)}
                   </span>
                   <span className="product-stock">{item.category}</span>
                 </div>

@@ -1,47 +1,42 @@
 ###############################################
-# Stage 1 — Build
+# Stage 1 - Build
 ###############################################
-FROM node:20-alpine AS build
-
-RUN apk add --no-cache libc6-compat
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Copy package definition
 COPY package.json ./
 
+# Install dependencies
 RUN npm install
 
+# Copy application
 COPY . .
 
-ARG VITE_API_BASE_URL=""
+# Build argument
+ARG VITE_API_BASE_URL=http://localhost:4000
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
+# Build React application
 RUN npm run build
 
-
 ###############################################
-# Stage 2 — Runtime
+# Stage 2 - Runtime
 ###############################################
 FROM nginx:1.27-alpine
 
-RUN mkdir -p /tmp/nginx_temp \
-    && mkdir -p /tmp/nginx \
-    && chmod -R 777 /tmp \
-    && chmod -R 777 /var/cache/nginx || true
+# Remove default content and create nginx temp dirs
+RUN rm -rf /usr/share/nginx/html/* \
+    && mkdir -p /tmp/nginx_temp/client_body /tmp/nginx_temp/proxy /tmp/nginx_temp/fastcgi /tmp/nginx_temp/uwsgi /tmp/nginx_temp/scgi
 
+# Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY default.conf /etc/nginx/conf.d/default.conf
 
-# Create SSL directory (certificates will be mounted as volume)
-RUN mkdir -p /etc/nginx/ssl
+# Copy built application
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-COPY --from=build /app/dist /usr/share/nginx/html
-
-RUN chgrp -R 0 /etc/nginx /usr/share/nginx /var/cache/nginx /var/run /etc/nginx/ssl \
-    && chmod -R g+rwX /etc/nginx /usr/share/nginx /var/cache/nginx /var/run /etc/nginx/ssl
-
-EXPOSE 8080 8443
-
-USER 1001
+EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]

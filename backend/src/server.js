@@ -4,20 +4,22 @@
 // Load environment variables from .env file
 require('dotenv').config();
 
+if (process.env.INSTANA_ENABLED === 'true') {
+  require('@instana/collector')({
+    tracing: {
+      enabled: true,
+      automaticTracingEnabled: true,
+      stackTraceLength: 10
+    },
+    metrics: {
+      transmissionDelay: 1000
+    }
+  });
+}
+
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
-
-// require('@instana/collector')({
-//   tracing: {
-//     enabled: true,
-//     automaticTracingEnabled: true,
-//     stackTraceLength: 10
-//   },
-//   metrics: {
-//     transmissionDelay: 1000
-//   }
-// });
 
 const express = require("express");
 const cors = require("cors");
@@ -33,14 +35,17 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "changeme-in-prod";
 
+// IBM Verify feature flag
+const IBM_VERIFY_ENABLED = process.env.IBM_VERIFY_ENABLED === 'true';
+
 // IBM Verify Configuration
-const IBM_VERIFY_CONFIG = {
+const IBM_VERIFY_CONFIG = IBM_VERIFY_ENABLED ? {
   issuer: process.env.IBM_VERIFY_ISSUER,
   clientID: process.env.IBM_VERIFY_CLIENT_ID,
   clientSecret: process.env.IBM_VERIFY_CLIENT_SECRET,
   callbackURL: process.env.IBM_VERIFY_CALLBACK_URL,
   scope: (process.env.IBM_VERIFY_SCOPE || "openid profile email").split(" ")
-};
+} : null;
 
 // Middleware
 app.use(cors({ 
@@ -65,8 +70,10 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Configure Passport with IBM Verify OIDC Strategy
-passport.use('ibm-verify', new OpenIDConnectStrategy(
+// Configure Passport with IBM Verify OIDC Strategy (only if enabled)
+if (IBM_VERIFY_ENABLED) {
+  console.log("[IBM VERIFY] Configuring IBM Verify OIDC strategy");
+  passport.use('ibm-verify', new OpenIDConnectStrategy(
   {
     issuer: IBM_VERIFY_CONFIG.issuer,
     authorizationURL: `${IBM_VERIFY_CONFIG.issuer}/authorize`,
@@ -253,7 +260,8 @@ passport.use('ibm-verify', new OpenIDConnectStrategy(
       return done(err);
     }
   }
-));
+  ));
+}
 
 // Serialize user for session
 passport.serializeUser((user, done) => {
@@ -333,77 +341,96 @@ function authMiddleware(req, res, next) {
 }
 
 /* -------------------------------------------------------------
- * IBM VERIFY AUTHENTICATION ROUTES
+ * IBM VERIFY AUTHENTICATION ROUTES (only if enabled)
  * ----------------------------------------------------------- */
 
-// Initiate IBM Verify login
-app.get("/api/auth/verify/login", 
-  passport.authenticate('ibm-verify', {
-    scope: IBM_VERIFY_CONFIG.scope
-  })
-);
+if (IBM_VERIFY_ENABLED) {
+  // Initiate IBM Verify login
+  app.get("/api/auth/verify/login",
+    passport.authenticate('ibm-verify', {
+      scope: IBM_VERIFY_CONFIG.scope
+    })
+  );
 
-// IBM Verify callback
-app.get("/api/auth/verify/callback",
-  passport.authenticate('ibm-verify', { 
-    failureRedirect: '/api/auth/verify/failure',
-    session: true
-  }),
-  async (req, res) => {
-    try {
-      console.log("[IBM VERIFY] Creating JWT for user:", req.user);
-      
-      // Generate JWT token with IBM Verify user data including access token
-      const token = jwt.sign(
-        {
-          userId: req.user.id, // Just the ID string
-          username: req.user.username, // Username string
-          displayName: req.user.displayName, // Display name for UI
-          is_admin: req.user.is_admin,
-          email: req.user.email, // Email string
-          auth_method: req.user.auth_method || 'ibm_verify',
-          accessToken: req.user.accessToken, // Include access token for SCIM API calls
-          refreshToken: req.user.refreshToken,
-          verifyUserInfo: req.user.verifyUserInfo || {}
-        },
-        JWT_SECRET,
-        { expiresIn: "8h" }
-      );
+  // IBM Verify callback
+  app.get("/api/auth/verify/callback",
+    passport.authenticate('ibm-verify', {
+      failureRedirect: '/api/auth/verify/failure',
+      session: true
+    }),
+    async (req, res) => {
+      try {
+        console.log("[IBM VERIFY] Creating JWT for user:", req.user);
+        
+        // Generate JWT token with IBM Verify user data including access token
+        const token = jwt.sign(
+          {
+            userId: req.user.id, // Just the ID string
+            username: req.user.username, // Username string
+            displayName: req.user.displayName, // Display name for UI
+            is_admin: req.user.is_admin,
+            email: req.user.email, // Email string
+            auth_method: req.user.auth_method || 'ibm_verify',
+            accessToken: req.user.accessToken, // Include access token for SCIM API calls
+            refreshToken: req.user.refreshToken,
+            verifyUserInfo: req.user.verifyUserInfo || {}
+          },
+          JWT_SECRET,
+          { expiresIn: "8h" }
+        );
 
-      console.log("[IBM VERIFY] JWT token created successfully");
+        console.log("[IBM VERIFY] JWT token created successfully");
 
-      // Redirect to frontend with token
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-      res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
-    } catch (err) {
-      console.error("[IBM VERIFY] Callback error:", err);
-      res.redirect('/api/auth/verify/failure');
+        // Redirect to frontend with token
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+      } catch (err) {
+        console.error("[IBM VERIFY] Callback error:", err);
+        res.redirect('/api/auth/verify/failure');
+      }
     }
-  }
-);
+  );
 
-// Authentication failure
-app.get("/api/auth/verify/failure", (req, res) => {
-  res.status(401).json({ 
-    message: "IBM Verify authentication failed"
+  // Authentication failure
+  app.get("/api/auth/verify/failure", (req, res) => {
+    res.status(401).json({
+      message: "IBM Verify authentication failed"
+    });
   });
-});
 
-// Get current user
-app.get("/api/auth/verify/user", (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "Not authenticated" });
-  }
-
-  res.json({
-    user: {
-      id: req.user.id,
-      username: req.user.username,
-      email: req.user.email,
-      is_admin: req.user.is_admin
+  // Get current user
+  app.get("/api/auth/verify/user", (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
     }
+
+    res.json({
+      user: {
+        id: req.user.id,
+        username: req.user.username,
+        email: req.user.email,
+        is_admin: req.user.is_admin
+      }
+    });
   });
-});
+} else {
+  // Return 404 for IBM Verify routes when disabled
+  app.get("/api/auth/verify/login", (req, res) => {
+    res.status(404).json({ message: "IBM Verify authentication is disabled" });
+  });
+  
+  app.get("/api/auth/verify/callback", (req, res) => {
+    res.status(404).json({ message: "IBM Verify authentication is disabled" });
+  });
+  
+  app.get("/api/auth/verify/failure", (req, res) => {
+    res.status(404).json({ message: "IBM Verify authentication is disabled" });
+  });
+  
+  app.get("/api/auth/verify/user", (req, res) => {
+    res.status(404).json({ message: "IBM Verify authentication is disabled" });
+  });
+}
 
 /* -------------------------------------------------------------
  * TRADITIONAL USERNAME/PASSWORD AUTHENTICATION
@@ -571,11 +598,11 @@ app.post("/api/auth/logout", authMiddleware, async (req, res) => {
       });
     }
     
-    // Extract tenant URL from IBM_VERIFY_ISSUER and construct Verify logout URL
-    const issuer = process.env.IBM_VERIFY_ISSUER;
+    // Extract tenant URL from IBM_VERIFY_ISSUER and construct Verify logout URL (only if enabled)
     let verifyLogoutUrl = null;
     
-    if (issuer) {
+    if (IBM_VERIFY_ENABLED && process.env.IBM_VERIFY_ISSUER) {
+      const issuer = process.env.IBM_VERIFY_ISSUER;
       // Extract base URL (e.g., https://emeabuildlab.verify.ibm.com)
       const url = new URL(issuer);
       const tenantUrl = `${url.protocol}//${url.host}`;
@@ -958,7 +985,9 @@ if (sslEnabled) {
   
   https.createServer(httpsOptions, app).listen(HTTPS_PORT, () => {
     console.log(`✓ Retail backend HTTPS server running on port ${HTTPS_PORT}`);
-    console.log(`  IBM Verify callback URL: ${IBM_VERIFY_CONFIG.callbackURL}`);
+    if (IBM_VERIFY_ENABLED) {
+      console.log(`  IBM Verify callback URL: ${IBM_VERIFY_CONFIG.callbackURL}`);
+    }
   });
   
   // Start HTTP server that redirects to HTTPS
@@ -972,6 +1001,8 @@ if (sslEnabled) {
   // Fallback to HTTP only if certificates don't exist
   app.listen(PORT, () => {
     console.log(`⚠ Retail backend running on HTTP port ${PORT} (SSL certificates not found)`);
-    console.log(`  IBM Verify callback URL: ${IBM_VERIFY_CONFIG.callbackURL}`);
+    if (IBM_VERIFY_ENABLED) {
+      console.log(`  IBM Verify callback URL: ${IBM_VERIFY_CONFIG.callbackURL}`);
+    }
   });
 }

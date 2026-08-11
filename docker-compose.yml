@@ -7,19 +7,17 @@ services:
       context: ./postgresql
       dockerfile: Dockerfile
     container_name: verifyretail-postgres
+    user: "0:0"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: retaildb
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgresql/full_dump.sql:/docker-entrypoint-initdb.d/full_dump.sql
-    network_mode: host
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    networks:
+      - retailnet
+    ports:
+      - "5432:5432"
 
   # Backend API
   backend:
@@ -34,24 +32,28 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: retaildb
-      
+
       # IBM Verify Configuration
+      IBM_VERIFY_ENABLED: ${IBM_VERIFY_ENABLED:-false}
       IBM_VERIFY_ISSUER: ${IBM_VERIFY_ISSUER:-https://emeabuildlab.verify.ibm.com/oidc/endpoint/default}
       IBM_VERIFY_CLIENT_ID: ${IBM_VERIFY_CLIENT_ID}
       IBM_VERIFY_CLIENT_SECRET: ${IBM_VERIFY_CLIENT_SECRET}
       IBM_VERIFY_CALLBACK_URL: ${IBM_VERIFY_CALLBACK_URL:-http://localhost:4000/api/auth/verify/callback}
       IBM_VERIFY_SCOPE: ${IBM_VERIFY_SCOPE:-openid profile email}
-      
+
       # Application Configuration
       SESSION_SECRET: ${SESSION_SECRET:-generate_a_random_secret_here}
       JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://20.163.217.62}
       PORT: 4000
       NODE_ENV: production
-    network_mode: host
+      INSTANA_ENABLED: "true"
+    networks:
+      - retailnet
+    ports:
+      - "4000:4000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     restart: unless-stopped
 
   # Frontend (React + Nginx)
@@ -60,9 +62,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000/api}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://20.163.217.62:4000/api}
     container_name: verifyretail-frontend
-    network_mode: host
+    networks:
+      - retailnet
+    ports:
+      - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -70,5 +75,13 @@ services:
 volumes:
   postgres_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/azureuser/retailsampleapp/data/postgres
+
+networks:
+  retailnet:
+    driver: bridge
 
 # Made with Bob

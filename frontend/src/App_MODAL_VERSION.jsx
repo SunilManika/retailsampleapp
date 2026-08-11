@@ -268,7 +268,7 @@ function CatalogPage({ onAddToCart, onAddToWishlist, onProductClick }) {
             <div className="product-body">
               <h3 className="product-name">{p.name}</h3>
               <div className="product-meta">
-                <span className="product-price">₹{p.price}</span>
+                <span className="product-price">${p.price}</span>
                 <span className="product-stock">Stock {p.stock}</span>
               </div>
 
@@ -442,7 +442,7 @@ function OrdersPage() {
             {orders.map((o) => (
               <tr key={o.id}>
                 <td>{o.id}</td>
-                <td>₹{o.total_amount}</td>
+                <td>${o.total_amount}</td>
                 <td>{o.status}</td>
                 <td>{o.payment_method}</td>
                 <td>{o.created_at}</td>
