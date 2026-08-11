@@ -5,9 +5,11 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
-const https_module = require("https");
 const NodeCache = require("node-cache");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
+
+// Absolute path covers cases where /usr/local/bin is not on PATH inside the container
+const OC_BIN = process.env.OC_BIN || "/usr/local/bin/oc";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "changeme-in-prod";
@@ -1258,10 +1260,27 @@ router.get("/products/:productId/insights", async (req, res) => {
  * the POST body and call `oc` (OpenShift CLI) directly.
  * --------------------------------------------------------------- */
 
-// Helper: run an oc command with the supplied credentials
+// Helper: run an oc command with the supplied credentials.
+// Uses execFileSync with an explicit args array — no shell interpolation,
+// stderr is captured so real error messages are surfaced to the caller.
 function ocExec(args, serverUrl, token) {
-  const base = `oc --server=${serverUrl} --token=${token} --insecure-skip-tls-verify=true`;
-  return execSync(`${base} ${args}`, { encoding: "utf8", timeout: 15000 });
+  const argv = [
+    `--server=${serverUrl}`,
+    `--token=${token}`,
+    "--insecure-skip-tls-verify=true",
+    ...args
+  ];
+  try {
+    return execFileSync(OC_BIN, argv, {
+      encoding: "utf8",
+      timeout: 20000,
+      stdio: ["ignore", "pipe", "pipe"]   // stdin, stdout, stderr all captured
+    });
+  } catch (err) {
+    // execFileSync puts stderr in err.stderr when stdio is piped
+    const detail = (err.stderr || err.stdout || err.message || "").toString().trim();
+    throw new Error(detail || err.message);
+  }
 }
 
 // POST /api/admin/cluster/test
@@ -1271,7 +1290,7 @@ router.post("/admin/cluster/test", authMiddleware, adminOnly, async (req, res) =
     return res.status(400).json({ message: "clusterServerUrl and clusterToken are required" });
   }
   try {
-    const out = ocExec("whoami", clusterServerUrl, clusterToken);
+    const out = ocExec(["whoami"], clusterServerUrl, clusterToken);
     res.json({ success: true, message: `Connected as: ${out.trim()}` });
   } catch (err) {
     console.error("[CLUSTER TEST]", err.message);
@@ -1287,7 +1306,7 @@ router.post("/admin/namespaces", authMiddleware, adminOnly, async (req, res) => 
   }
   try {
     const out = ocExec(
-      `get namespaces -o jsonpath='{.items[*].metadata.name}'`,
+      ["get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}"],
       clusterServerUrl, clusterToken
     );
     const all = out.trim().split(/\s+/).filter(Boolean);
@@ -1307,7 +1326,7 @@ router.post("/admin/pods/metrics", authMiddleware, adminOnly, async (req, res) =
   }
   try {
     const out = ocExec(
-      `get pods -n ${namespace} -o json`,
+      ["get", "pods", "-n", namespace, "-o", "json"],
       clusterServerUrl, clusterToken
     );
     const podList = JSON.parse(out);
@@ -1342,15 +1361,16 @@ router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => 
     return res.status(400).json({ message: "backendRoute, clusterServerUrl, clusterToken and namespace are required" });
   }
   try {
-    // Patch the JMeter job's BACKEND_ROUTE env var then apply it
-    ocExec(
-      `set env job/jmeter-simulation BACKEND_ROUTE=https://${backendRoute}/api -n ${namespace} --overwrite`,
-      clusterServerUrl, clusterToken
-    );
     // Delete any previous completed job so we can re-run
-    try { ocExec(`delete job jmeter-simulation -n ${namespace}`, clusterServerUrl, clusterToken); } catch (_) {}
+    try {
+      ocExec(["delete", "job", "jmeter-simulation", "-n", namespace], clusterServerUrl, clusterToken);
+    } catch (_) {}
+    const jmeterImage = `docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev`;
     ocExec(
-      `create job jmeter-simulation --image=docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev -n ${namespace} -- bash /jmeter/run_spike.sh https://${backendRoute}/api`,
+      ["create", "job", "jmeter-simulation",
+       `--image=${jmeterImage}`,
+       "-n", namespace,
+       "--", "bash", "/jmeter/run_spike.sh", `https://${backendRoute}/api`],
       clusterServerUrl, clusterToken
     );
     res.json({ success: true, message: `JMeter simulation started in namespace ${namespace}` });
