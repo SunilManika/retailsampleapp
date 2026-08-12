@@ -1321,21 +1321,49 @@ router.post("/admin/pods/metrics", authMiddleware, adminOnly, async (req, res) =
   }
   try {
     const client = k8sClient(clusterServerUrl, clusterToken);
-    const resp = await client.get(`/api/v1/namespaces/${namespace}/pods`);
-    const pods = (resp.data?.items || []).map(pod => {
-      const containers = pod.spec.containers || [];
+
+    // Fetch pod list and metrics in parallel; metrics-server may not be available so tolerate its failure
+    const [podsResp, metricsResp] = await Promise.allSettled([
+      client.get(`/api/v1/namespaces/${namespace}/pods`),
+      client.get(`/apis/metrics.k8s.io/v1beta1/namespaces/${namespace}/pods`),
+    ]);
+
+    const podItems = podsResp.status === "fulfilled" ? (podsResp.value.data?.items || []) : [];
+
+    // Build a lookup of actual usage from metrics-server keyed by pod name
+    const usageMap = {};
+    if (metricsResp.status === "fulfilled") {
+      for (const m of (metricsResp.value.data?.items || [])) {
+        const cpu    = m.containers.reduce((s, c) => s + parseCpu(c.usage?.cpu),    0);
+        const memory = m.containers.reduce((s, c) => s + parseMem(c.usage?.memory), 0);
+        usageMap[m.metadata.name] = { cpu, memory };
+      }
+    }
+
+    const pods = podItems.map(pod => {
+      const containers  = pod.spec.containers || [];
+      const cpuReq      = containers.reduce((s, c) => s + parseCpu(c.resources?.requests?.cpu),    0);
+      const cpuLim      = containers.reduce((s, c) => s + parseCpu(c.resources?.limits?.cpu),      0);
+      const memReq      = containers.reduce((s, c) => s + parseMem(c.resources?.requests?.memory), 0);
+      const memLim      = containers.reduce((s, c) => s + parseMem(c.resources?.limits?.memory),   0);
+      const usage       = usageMap[pod.metadata.name] || { cpu: 0, memory: 0 };
       return {
         name:          pod.metadata.name,
         status:        pod.status.phase,
         ready:         (pod.status.containerStatuses || []).every(c => c.ready),
-        cpuRequest:    `${containers.reduce((s, c) => s + parseCpu(c.resources?.requests?.cpu),    0)}m`,
-        cpuLimit:      `${containers.reduce((s, c) => s + parseCpu(c.resources?.limits?.cpu),      0)}m`,
-        memoryRequest: `${containers.reduce((s, c) => s + parseMem(c.resources?.requests?.memory), 0)}Mi`,
-        memoryLimit:   `${containers.reduce((s, c) => s + parseMem(c.resources?.limits?.memory),   0)}Mi`,
         restarts:      (pod.status.containerStatuses || []).reduce((s, c) => s + c.restartCount, 0),
+        // Actual usage (from metrics-server); falls back to 0 if metrics-server unavailable
+        cpuUsage:      `${usage.cpu}m`,
+        memoryUsage:   `${usage.memory}Mi`,
+        // Requests / limits from pod spec
+        cpuRequest:    `${cpuReq}m`,
+        cpuLimit:      `${cpuLim}m`,
+        memoryRequest: `${memReq}Mi`,
+        memoryLimit:   `${memLim}Mi`,
       };
     });
-    res.json({ success: true, pods, namespace });
+
+    res.json({ success: true, pods, podCount: pods.length, namespace });
   } catch (err) {
     console.error("[POD METRICS]", k8sError(err));
     res.status(502).json({ success: false, message: `Failed to get pod metrics: ${k8sError(err)}` });
