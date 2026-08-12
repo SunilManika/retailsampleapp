@@ -4,6 +4,7 @@ const db = require("./db");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const http = require("http");
+const https = require("https");
 const NodeCache = require("node-cache");
 
 const router = express.Router();
@@ -1256,7 +1257,6 @@ router.get("/products/:productId/insights", async (req, res) => {
  * --------------------------------------------------------------- */
 
 // Shared axios instance that skips TLS verification (self-signed certs on IKS/ROKS)
-const https = require("https");
 const k8sAgent = new https.Agent({ rejectUnauthorized: false });
 
 function k8sClient(serverUrl, token) {
