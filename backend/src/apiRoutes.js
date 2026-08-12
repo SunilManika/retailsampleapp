@@ -4,12 +4,7 @@ const db = require("./db");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const http = require("http");
-const https = require("https");
 const NodeCache = require("node-cache");
-const { execFileSync } = require("child_process");
-
-// Absolute path covers cases where /usr/local/bin is not on PATH inside the container
-const OC_BIN = process.env.OC_BIN || "/usr/local/bin/oc";
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "changeme-in-prod";
@@ -1256,45 +1251,48 @@ router.get("/products/:productId/insights", async (req, res) => {
 
 /* ---------------------------------------------------------------
  * CLUSTER OPERATIONS  (Load Testing / System Analysis)
- * All four endpoints receive clusterServerUrl + clusterToken in
- * the POST body and call `oc` (OpenShift CLI) directly.
+ * All four endpoints call the Kubernetes/OpenShift REST API
+ * directly via axios — no oc CLI required in the container.
  * --------------------------------------------------------------- */
 
-// Helper: run an oc command with the supplied credentials.
-// Uses execFileSync with an explicit args array — no shell interpolation,
-// stderr is captured so real error messages are surfaced to the caller.
-function ocExec(args, serverUrl, token) {
-  const argv = [
-    `--server=${serverUrl}`,
-    `--token=${token}`,
-    "--insecure-skip-tls-verify=true",
-    ...args
-  ];
-  try {
-    return execFileSync(OC_BIN, argv, {
-      encoding: "utf8",
-      timeout: 20000,
-      stdio: ["ignore", "pipe", "pipe"]   // stdin, stdout, stderr all captured
-    });
-  } catch (err) {
-    // execFileSync puts stderr in err.stderr when stdio is piped
-    const detail = (err.stderr || err.stdout || err.message || "").toString().trim();
-    throw new Error(detail || err.message);
-  }
+// Shared axios instance that skips TLS verification (self-signed certs on IKS/ROKS)
+const https = require("https");
+const k8sAgent = new https.Agent({ rejectUnauthorized: false });
+
+function k8sClient(serverUrl, token) {
+  return axios.create({
+    baseURL: serverUrl,
+    headers: { Authorization: `Bearer ${token}` },
+    httpsAgent: k8sAgent,
+    timeout: 20000,
+    maxContentLength: 10 * 1024 * 1024, // 10 MB — pod lists on large clusters can be big
+    maxBodyLength:    10 * 1024 * 1024,
+  });
+}
+
+function k8sError(err) {
+  const msg =
+    err.response?.data?.message ||
+    err.response?.data?.reason  ||
+    err.message;
+  return String(msg || "Unknown cluster error");
 }
 
 // POST /api/admin/cluster/test
+// Calls GET /apis/user.openshift.io/v1/users/~ (the "whoami" endpoint)
 router.post("/admin/cluster/test", authMiddleware, adminOnly, async (req, res) => {
   const { clusterServerUrl, clusterToken } = req.body;
   if (!clusterServerUrl || !clusterToken) {
     return res.status(400).json({ message: "clusterServerUrl and clusterToken are required" });
   }
   try {
-    const out = ocExec(["whoami"], clusterServerUrl, clusterToken);
-    res.json({ success: true, message: `Connected as: ${out.trim()}` });
+    const client = k8sClient(clusterServerUrl, clusterToken);
+    const resp = await client.get("/apis/user.openshift.io/v1/users/~");
+    const user = resp.data?.metadata?.name || resp.data?.fullName || "unknown";
+    res.json({ success: true, message: `Connected as: ${user}` });
   } catch (err) {
-    console.error("[CLUSTER TEST]", err.message);
-    res.status(502).json({ success: false, message: `Connection failed: ${err.message.split("\n")[0]}` });
+    console.error("[CLUSTER TEST]", k8sError(err));
+    res.status(502).json({ success: false, message: `Connection failed: ${k8sError(err)}` });
   }
 });
 
@@ -1305,16 +1303,14 @@ router.post("/admin/namespaces", authMiddleware, adminOnly, async (req, res) => 
     return res.status(400).json({ message: "clusterServerUrl and clusterToken are required" });
   }
   try {
-    const out = ocExec(
-      ["get", "namespaces", "-o", "jsonpath={.items[*].metadata.name}"],
-      clusterServerUrl, clusterToken
-    );
-    const all = out.trim().split(/\s+/).filter(Boolean);
+    const client = k8sClient(clusterServerUrl, clusterToken);
+    const resp = await client.get("/api/v1/namespaces");
+    const all = (resp.data?.items || []).map(n => n.metadata.name);
     const retail = all.filter(n => n.startsWith("retail"));
     res.json({ success: true, namespaces: retail.length ? retail : all });
   } catch (err) {
-    console.error("[NAMESPACES]", err.message);
-    res.status(502).json({ success: false, message: `Failed to list namespaces: ${err.message.split("\n")[0]}` });
+    console.error("[NAMESPACES]", k8sError(err));
+    res.status(502).json({ success: false, message: `Failed to list namespaces: ${k8sError(err)}` });
   }
 });
 
@@ -1325,58 +1321,77 @@ router.post("/admin/pods/metrics", authMiddleware, adminOnly, async (req, res) =
     return res.status(400).json({ message: "clusterServerUrl, clusterToken and namespace are required" });
   }
   try {
-    const out = ocExec(
-      ["get", "pods", "-n", namespace, "-o", "json"],
-      clusterServerUrl, clusterToken
-    );
-    const podList = JSON.parse(out);
-    const pods = podList.items.map(pod => {
+    const client = k8sClient(clusterServerUrl, clusterToken);
+    const resp = await client.get(`/api/v1/namespaces/${namespace}/pods`);
+    const pods = (resp.data?.items || []).map(pod => {
       const containers = pod.spec.containers || [];
-      const totalCpuReq  = containers.reduce((s, c) => s + parseCpu(c.resources?.requests?.cpu),  0);
-      const totalMemReq  = containers.reduce((s, c) => s + parseMem(c.resources?.requests?.memory), 0);
-      const totalCpuLim  = containers.reduce((s, c) => s + parseCpu(c.resources?.limits?.cpu),  0);
-      const totalMemLim  = containers.reduce((s, c) => s + parseMem(c.resources?.limits?.memory), 0);
       return {
-        name:         pod.metadata.name,
-        status:       pod.status.phase,
-        ready:        pod.status.containerStatuses?.every(c => c.ready) ?? false,
-        cpuRequest:   `${totalCpuReq}m`,
-        cpuLimit:     `${totalCpuLim}m`,
-        memoryRequest:`${totalMemReq}Mi`,
-        memoryLimit:  `${totalMemLim}Mi`,
-        restarts:     pod.status.containerStatuses?.reduce((s, c) => s + c.restartCount, 0) ?? 0,
+        name:          pod.metadata.name,
+        status:        pod.status.phase,
+        ready:         (pod.status.containerStatuses || []).every(c => c.ready),
+        cpuRequest:    `${containers.reduce((s, c) => s + parseCpu(c.resources?.requests?.cpu),    0)}m`,
+        cpuLimit:      `${containers.reduce((s, c) => s + parseCpu(c.resources?.limits?.cpu),      0)}m`,
+        memoryRequest: `${containers.reduce((s, c) => s + parseMem(c.resources?.requests?.memory), 0)}Mi`,
+        memoryLimit:   `${containers.reduce((s, c) => s + parseMem(c.resources?.limits?.memory),   0)}Mi`,
+        restarts:      (pod.status.containerStatuses || []).reduce((s, c) => s + c.restartCount, 0),
       };
     });
     res.json({ success: true, pods, namespace });
   } catch (err) {
-    console.error("[POD METRICS]", err.message);
-    res.status(502).json({ success: false, message: `Failed to get pod metrics: ${err.message.split("\n")[0]}` });
+    console.error("[POD METRICS]", k8sError(err));
+    res.status(502).json({ success: false, message: `Failed to get pod metrics: ${k8sError(err)}` });
   }
 });
 
 // POST /api/admin/jmeter/run
+// Deletes any existing jmeter-simulation Job then creates a fresh one.
 router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => {
   const { backendRoute, clusterServerUrl, clusterToken, namespace } = req.body;
   if (!backendRoute || !clusterServerUrl || !clusterToken || !namespace) {
     return res.status(400).json({ message: "backendRoute, clusterServerUrl, clusterToken and namespace are required" });
   }
   try {
-    // Delete any previous completed job so we can re-run
-    try {
-      ocExec(["delete", "job", "jmeter-simulation", "-n", namespace], clusterServerUrl, clusterToken);
-    } catch (_) {}
+    const client = k8sClient(clusterServerUrl, clusterToken);
+    const jobsBase = `/apis/batch/v1/namespaces/${namespace}/jobs`;
+
+    // Delete old job (ignore 404)
+    try { await client.delete(`${jobsBase}/jmeter-simulation`); } catch (_) {}
+
     const jmeterImage = `docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev`;
-    ocExec(
-      ["create", "job", "jmeter-simulation",
-       `--image=${jmeterImage}`,
-       "-n", namespace,
-       "--", "bash", "/jmeter/run_spike.sh", `https://${backendRoute}/api`],
-      clusterServerUrl, clusterToken
-    );
+    const backendUrl  = `https://${backendRoute}/api`;
+
+    const jobManifest = {
+      apiVersion: "batch/v1",
+      kind: "Job",
+      metadata: { name: "jmeter-simulation", namespace },
+      spec: {
+        ttlSecondsAfterFinished: 3600,
+        backoffLimit: 0,
+        template: {
+          metadata: { labels: { app: "jmeter-simulation" } },
+          spec: {
+            restartPolicy: "Never",
+            containers: [{
+              name:    "jmeter",
+              image:   jmeterImage,
+              command: ["bash", "/jmeter/run_spike.sh"],
+              args:    [backendUrl],
+              env:     [{ name: "BACKEND_ROUTE", value: backendUrl }],
+              resources: {
+                requests: { memory: "512Mi", cpu: "500m" },
+                limits:   { memory: "2Gi",  cpu: "2000m" },
+              },
+            }],
+          },
+        },
+      },
+    };
+
+    await client.post(jobsBase, jobManifest);
     res.json({ success: true, message: `JMeter simulation started in namespace ${namespace}` });
   } catch (err) {
-    console.error("[JMETER RUN]", err.message);
-    res.status(502).json({ success: false, message: `Failed to start JMeter: ${err.message.split("\n")[0]}` });
+    console.error("[JMETER RUN]", k8sError(err));
+    res.status(502).json({ success: false, message: `Failed to start JMeter: ${k8sError(err)}` });
   }
 });
 
