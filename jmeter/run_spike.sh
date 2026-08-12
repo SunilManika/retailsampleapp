@@ -23,6 +23,11 @@ if [ -z "$SERVER_HOST" ]; then
   exit 1
 fi
 
+# Tell log4j2 where to write jmeter.log before the JVM starts,
+# so OpenShift random-UID containers (read-only CWD) don't get
+# FileNotFoundException at startup.
+export JVM_ARGS="-Djmeter.logfile=/tmp/jmeter.log"
+
 echo "============================================================"
 echo "  Running 5-Minute Load Test"
 echo "  Server Host: $SERVER_HOST"
