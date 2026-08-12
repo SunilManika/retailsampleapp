@@ -19,13 +19,9 @@ import {
 
 function SystemAnalysisTab() {
   // Load Testing State
-  const [backendRoute, setBackendRoute] = useState(
-    "retail-backend-retail-test.automationbuildingblocks-2bef1f4b4097001da9502000c44fc2b2-0000.us-east.containers.appdomain.cloud"
-  );
+  const [backendRoute, setBackendRoute] = useState("");
   const [configureCredentials, setConfigureCredentials] = useState(true);
-  const [clusterServerUrl, setClusterServerUrl] = useState(
-    "https://c104-e.us-east.containers.cloud.ibm.com:31258"
-  );
+  const [clusterServerUrl, setClusterServerUrl] = useState("");
   const [clusterToken, setClusterToken] = useState("");
   const [loadTestError, setLoadTestError] = useState("");
   const [loadTestRunning, setLoadTestRunning] = useState(false);

@@ -39,7 +39,7 @@ JMX="./retail_spike.jmx"
 USERS=300
 RAMP=30
 DURATION=300
-LOG="results_5min.jtl"
+LOG="/tmp/results_5min.jtl"
 
 # ------------------------------
 #  Execute Test
@@ -47,6 +47,7 @@ LOG="results_5min.jtl"
 jmeter -n \
   -t "$JMX" \
   -l "$LOG" \
+  -j "/tmp/jmeter.log" \
   -Jusers="$USERS" \
   -Jramp="$RAMP" \
   -Jloops=1 \

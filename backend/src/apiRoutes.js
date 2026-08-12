@@ -1357,7 +1357,8 @@ router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => 
     try { await client.delete(`${jobsBase}/jmeter-simulation`); } catch (_) {}
 
     const jmeterImage = `docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev`;
-    const backendUrl  = `https://${backendRoute}/api`;
+    // Strip protocol and path — run_spike.sh passes this as -JserverHost which must be hostname only
+    const serverHost  = backendRoute.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 
     const jobManifest = {
       apiVersion: "batch/v1",
@@ -1374,8 +1375,8 @@ router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => 
               name:    "jmeter",
               image:   jmeterImage,
               command: ["bash", "/jmeter/run_spike.sh"],
-              args:    [backendUrl],
-              env:     [{ name: "BACKEND_ROUTE", value: backendUrl }],
+              args:    [serverHost],
+              env:     [{ name: "BACKEND_ROUTE", value: serverHost }],
               resources: {
                 requests: { memory: "512Mi", cpu: "500m" },
                 limits:   { memory: "2Gi",  cpu: "2000m" },
