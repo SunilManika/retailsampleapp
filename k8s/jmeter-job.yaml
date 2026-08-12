@@ -16,7 +16,7 @@ spec:
       - name: dockerhub-secret
       containers:
       - name: jmeter
-        image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-jmeter:1.0.0-dev
+        image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-jmeter:1.0.1
         imagePullPolicy: Always
         command: ["bash", "/jmeter/run_spike.sh"]
         args: ["BACKEND_ROUTE_PLACEHOLDER"]

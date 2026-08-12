@@ -79,7 +79,7 @@ POSTGRES_LABEL="app=retail-postgres"
 BACKEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-backend:1.0.0"
 FRONTEND_IMAGE="docker.io/${DOCKER_USERNAME}/retail-frontend:1.0.0"
 POSTGRES_IMAGE="docker.io/${DOCKER_USERNAME}/retail-postgresql:1.0.0"
-JMETER_IMAGE="docker.io/${DOCKER_USERNAME}/retail-jmeter:1.0.0-dev"
+JMETER_IMAGE="docker.io/${DOCKER_USERNAME}/retail-jmeter:1.0.1"
 RAG_IMAGE="docker.io/${DOCKER_USERNAME}/retail-rag-retrieval:1.0.0"
 
 GITHUB_REPO="${GITHUB_REPO:-SunilManika/retailsampleapp}"

@@ -1373,7 +1373,7 @@ router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => 
       if (!e.response || e.response.status !== 404) throw e; // Unexpected error
     }
 
-    const jmeterImage = `docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev`;
+    const jmeterImage = `docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.1`;
     // Strip protocol and path — run_spike.sh passes this as -JserverHost which must be hostname only
     const serverHost  = backendRoute.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 
