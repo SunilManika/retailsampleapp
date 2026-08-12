@@ -313,47 +313,6 @@ function SystemAnalysisTab() {
             JMeter directory.
           </p>
 
-          <div className="form-group">
-            <label className="form-label">Namespace</label>
-            <select
-              className="form-input"
-              value={selectedNamespace}
-              onChange={(e) => setSelectedNamespace(e.target.value)}
-              disabled={namespaces.length === 0 || loadingNamespaces}
-              style={{ cursor: namespaces.length === 0 ? 'not-allowed' : 'pointer' }}
-            >
-              <option value="">-- Select a namespace --</option>
-              {namespaces.map((ns) => (
-                <option key={ns} value={ns}>{ns}</option>
-              ))}
-            </select>
-            <p className="form-help">
-              {loadingNamespaces ? (
-                "Loading namespaces..."
-              ) : namespacesError ? (
-                <span style={{ color: "#dc2626" }}>{namespacesError}</span>
-              ) : namespaces.length > 0 ? (
-                `Select the namespace for load testing (${namespaces.length} available)`
-              ) : (
-                "Test connection to load namespaces starting with 'retail'"
-              )}
-            </p>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Backend Route</label>
-            <input
-              type="text"
-              className="form-input"
-              value={backendRoute}
-              onChange={(e) => setBackendRoute(e.target.value)}
-              placeholder="Enter the backend route to run the JMeter simulation against"
-            />
-            <p className="form-help">
-              Enter the backend route to run the JMeter simulation against
-            </p>
-          </div>
-
           <div className="credentials-section">
             <div className="form-group">
               <label className="form-label" style={{ color: "#dc2626", fontWeight: 600 }}>
@@ -406,6 +365,47 @@ function SystemAnalysisTab() {
                 </div>
               )}
             </div>
+
+          <div className="form-group">
+            <label className="form-label">Namespace</label>
+            <select
+              className="form-input"
+              value={selectedNamespace}
+              onChange={(e) => setSelectedNamespace(e.target.value)}
+              disabled={namespaces.length === 0 || loadingNamespaces}
+              style={{ cursor: namespaces.length === 0 ? 'not-allowed' : 'pointer' }}
+            >
+              <option value="">-- Select a namespace --</option>
+              {namespaces.map((ns) => (
+                <option key={ns} value={ns}>{ns}</option>
+              ))}
+            </select>
+            <p className="form-help">
+              {loadingNamespaces ? (
+                "Loading namespaces..."
+              ) : namespacesError ? (
+                <span style={{ color: "#dc2626" }}>{namespacesError}</span>
+              ) : namespaces.length > 0 ? (
+                `Select the namespace for load testing (${namespaces.length} available)`
+              ) : (
+                "Test connection above to load available namespaces"
+              )}
+            </p>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Backend Route</label>
+            <input
+              type="text"
+              className="form-input"
+              value={backendRoute}
+              onChange={(e) => setBackendRoute(e.target.value)}
+              placeholder="Enter the backend route to run the JMeter simulation against"
+            />
+            <p className="form-help">
+              Enter the backend route to run the JMeter simulation against
+            </p>
+          </div>
 
           {simulationStatus && (
             <div className={`connection-status ${simulationStatus}`}>
