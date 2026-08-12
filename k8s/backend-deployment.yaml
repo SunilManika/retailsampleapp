@@ -49,6 +49,8 @@ spec:
               value: "http://rag-retrieval-api:8080"
             - name: FRONTEND_URL
               value: "FRONTEND_URL_PLACEHOLDER"
+            - name: DOCKER_USERNAME
+              value: "DOCKER_USERNAME_PLACEHOLDER"
           ports:
             - containerPort: 4000
           resources:
