@@ -384,8 +384,9 @@ resolve_routes() {
 patch_manifests_with_routes() {
     local k8s_dir="$HOME/retailsampleapp-main/k8s"
     step "Patching manifests with live routes"
-    # JMeter job — backend API URL
-    sedi "s|BACKEND_ROUTE_PLACEHOLDER|https://${BACKEND_ROUTE}/api|g" "$k8s_dir/jmeter-job.yaml"
+    # JMeter job — bare hostname only (run_spike.sh passes it as -JserverHost;
+    # protocol=https and port=443 are hardcoded in retail_spike.jmx)
+    sedi "s|BACKEND_ROUTE_PLACEHOLDER|${BACKEND_ROUTE}|g" "$k8s_dir/jmeter-job.yaml"
     # Backend deployment — CORS origin must match the frontend URL
     sedi "s|FRONTEND_URL_PLACEHOLDER|https://${FRONTEND_ROUTE}|g"     "$k8s_dir/backend-deployment.yaml"
     # Re-apply backend deployment so the new FRONTEND_URL env var takes effect

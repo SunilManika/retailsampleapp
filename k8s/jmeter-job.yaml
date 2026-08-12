@@ -19,10 +19,8 @@ spec:
         image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-jmeter:1.0.0-dev
         imagePullPolicy: Always
         command: ["bash", "/jmeter/run_spike.sh"]
-        args: ["$(BACKEND_ROUTE)"]
+        args: ["BACKEND_ROUTE_PLACEHOLDER"]
         env:
-        - name: BACKEND_ROUTE
-          value: "BACKEND_ROUTE_PLACEHOLDER"
         - name: JVM_ARGS
           value: "-Djmeter.logfile=/tmp/jmeter.log"
         resources:

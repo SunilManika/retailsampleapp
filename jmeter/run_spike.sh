@@ -55,7 +55,6 @@ jmeter -n \
   -j "/tmp/jmeter.log" \
   -Jusers="$USERS" \
   -Jramp="$RAMP" \
-  -Jloops=1 \
   -JserverHost="$SERVER_HOST" \
   -Jduration="$DURATION"
 

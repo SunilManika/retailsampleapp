@@ -26,13 +26,16 @@ WORKDIR /jmeter
 COPY retail_spike.jmx .
 COPY users.csv .
 COPY run_spike.sh .
-COPY run_5min.sh .
 
 # Make scripts executable
-RUN chmod +x run_spike.sh run_5min.sh
+RUN chmod +x run_spike.sh
 
 # Set environment variables
 ENV PATH="${JMETER_HOME}/bin:${PATH}"
+# OpenShift assigns a random UID with no home directory.
+# Setting HOME=/tmp prevents Java prefs warnings and ensures
+# any library that needs a writable home dir can function.
+ENV HOME=/tmp
 
 # Default command
 CMD ["bash"]
