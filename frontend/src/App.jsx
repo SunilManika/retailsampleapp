@@ -58,7 +58,7 @@ function Navbar({ user, onLogout, searchValue, onSearchChange, onSearch }) {
       <div className="nav-primary">
         {/* Logo */}
         <Link to="/" className="nav-logo-wrap">
-          <span className="nav-logo-text">RetailDemo</span>
+          <span className="nav-logo-text">Retail Demo</span>
           <span className="nav-logo-dot">.</span>
         </Link>
 

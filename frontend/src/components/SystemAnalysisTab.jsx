@@ -35,7 +35,7 @@ function SystemAnalysisTab() {
 
   // Namespace State
   const [namespaces, setNamespaces] = useState([]);
-  const [selectedNamespace, setSelectedNamespace] = useState("retail-test");
+  const [selectedNamespace, setSelectedNamespace] = useState("");
   const [loadingNamespaces, setLoadingNamespaces] = useState(false);
   const [namespacesError, setNamespacesError] = useState("");
 
@@ -126,6 +126,12 @@ function SystemAnalysisTab() {
     if (!clusterServerUrl || !clusterToken) {
       setSimulationStatus("error");
       setSimulationMessage("Cluster credentials are required to run JMeter simulation. Please provide both cluster server URL and token.");
+      return;
+    }
+
+    if (!selectedNamespace) {
+      setSimulationStatus("error");
+      setSimulationMessage("Please select a namespace from the dropdown.");
       return;
     }
 
@@ -316,13 +322,9 @@ function SystemAnalysisTab() {
               disabled={namespaces.length === 0 || loadingNamespaces}
               style={{ cursor: namespaces.length === 0 ? 'not-allowed' : 'pointer' }}
             >
-              {namespaces.length === 0 && (
-                <option value="">No namespaces available</option>
-              )}
+              <option value="">-- Select a namespace --</option>
               {namespaces.map((ns) => (
-                <option key={ns} value={ns}>
-                  {ns}
-                </option>
+                <option key={ns} value={ns}>{ns}</option>
               ))}
             </select>
             <p className="form-help">

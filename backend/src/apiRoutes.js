@@ -1305,9 +1305,8 @@ router.post("/admin/namespaces", authMiddleware, adminOnly, async (req, res) => 
   try {
     const client = k8sClient(clusterServerUrl, clusterToken);
     const resp = await client.get("/api/v1/namespaces");
-    const all = (resp.data?.items || []).map(n => n.metadata.name);
-    const retail = all.filter(n => n.startsWith("retail"));
-    res.json({ success: true, namespaces: retail.length ? retail : all });
+    const all = (resp.data?.items || []).map(n => n.metadata.name).sort();
+    res.json({ success: true, namespaces: all });
   } catch (err) {
     console.error("[NAMESPACES]", k8sError(err));
     res.status(502).json({ success: false, message: `Failed to list namespaces: ${k8sError(err)}` });
