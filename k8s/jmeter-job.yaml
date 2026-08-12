@@ -17,11 +17,14 @@ spec:
       containers:
       - name: jmeter
         image: docker.io/DOCKER_USERNAME_PLACEHOLDER/retail-jmeter:1.0.0-dev
+        imagePullPolicy: Always
         command: ["bash", "/jmeter/run_spike.sh"]
         args: ["$(BACKEND_ROUTE)"]
         env:
         - name: BACKEND_ROUTE
           value: "BACKEND_ROUTE_PLACEHOLDER"
+        - name: JVM_ARGS
+          value: "-Djmeter.logfile=/tmp/jmeter.log"
         resources:
           requests:
             memory: "512Mi"
@@ -29,11 +32,5 @@ spec:
           limits:
             memory: "2Gi"
             cpu: "2000m"
-        volumeMounts:
-        - name: jmeter-results
-          mountPath: /jmeter/results
-      volumes:
-      - name: jmeter-results
-        emptyDir: {}
 
 # Made with Bob

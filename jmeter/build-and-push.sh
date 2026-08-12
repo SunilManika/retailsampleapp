@@ -4,7 +4,7 @@
 # Usage: ./build-and-push.sh <registry-url>
 # Example: ./build-and-push.sh quay.io/your-username
 
-REGISTRY=${1:-"quay.io/your-registry"}
+REGISTRY=${1:-"docker.io/sunilmanika"}
 IMAGE_NAME="retail-jmeter"
 TAG="latest"
 

@@ -316,6 +316,7 @@ deploy_manifests() {
     for f in "$k8s_dir/"*.yaml; do
         case "$(basename "$f")" in
             rag-deployment.yaml|rag-service.yaml|rag-route.yaml|rag-secrets.yaml) continue ;;
+            jmeter-job.yaml) continue ;;  # created on-demand by backend API, never auto-applied
         esac
         run_cmd "Apply $(basename "$f")" "oc apply -f $f"
     done

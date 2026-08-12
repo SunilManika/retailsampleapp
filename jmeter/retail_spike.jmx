@@ -62,7 +62,7 @@
         <!-- ===================== CONFIG ELEMENTS ===================== -->
         <!-- CSV: username,password (no header row in file) -->
         <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="CSV_Users" enabled="true">
-		<stringProp name="filename">users.csv</stringProp>
+  <stringProp name="filename">/jmeter/users.csv</stringProp>
           <stringProp name="fileEncoding"></stringProp>
           <stringProp name="variableNames">username,password</stringProp>
           <stringProp name="delimiter">,</stringProp>
@@ -430,7 +430,7 @@
         <!-- ===================== LISTENER ===================== -->
         <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
           <boolProp name="ResultCollector.error_logging">false</boolProp>
-          <stringProp name="filename">results.jtl</stringProp>
+          <stringProp name="filename">/tmp/results.jtl</stringProp>
         </ResultCollector>
         <hashTree/>
       </hashTree>
