@@ -1353,8 +1353,25 @@ router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => 
     const client = k8sClient(clusterServerUrl, clusterToken);
     const jobsBase = `/apis/batch/v1/namespaces/${namespace}/jobs`;
 
-    // Delete old job (ignore 404)
-    try { await client.delete(`${jobsBase}/jmeter-simulation`); } catch (_) {}
+    // Delete old job with foreground propagation (waits for pods to terminate),
+    // then poll until it is fully gone (404) before creating a new one.
+    try {
+      await client.delete(`${jobsBase}/jmeter-simulation`, {
+        data: { apiVersion: "v1", kind: "DeleteOptions", propagationPolicy: "Foreground" },
+      });
+      // Wait up to 30 s for the job to disappear
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          await client.get(`${jobsBase}/jmeter-simulation`);
+          // Still exists — keep waiting
+        } catch (e) {
+          if (e.response && e.response.status === 404) break; // Gone — safe to proceed
+        }
+      }
+    } catch (e) {
+      if (!e.response || e.response.status !== 404) throw e; // Unexpected error
+    }
 
     const jmeterImage = `docker.io/${process.env.DOCKER_USERNAME || "technologybuildingblocks"}/retail-jmeter:1.0.0-dev`;
     // Strip protocol and path — run_spike.sh passes this as -JserverHost which must be hostname only
@@ -1371,12 +1388,17 @@ router.post("/admin/jmeter/run", authMiddleware, adminOnly, async (req, res) => 
           metadata: { labels: { app: "jmeter-simulation" } },
           spec: {
             restartPolicy: "Never",
+            imagePullSecrets: [{ name: "dockerhub-secret" }],
             containers: [{
-              name:    "jmeter",
-              image:   jmeterImage,
+              name:            "jmeter",
+              image:           jmeterImage,
+              imagePullPolicy: "Always",
               command: ["bash", "/jmeter/run_spike.sh"],
               args:    [serverHost],
-              env:     [{ name: "BACKEND_ROUTE", value: serverHost }],
+              env: [
+                { name: "BACKEND_ROUTE",    value: serverHost },
+                { name: "JVM_ARGS",         value: "-Djmeter.logfile=/tmp/jmeter.log" },
+              ],
               resources: {
                 requests: { memory: "512Mi", cpu: "500m" },
                 limits:   { memory: "2Gi",  cpu: "2000m" },

@@ -25,6 +25,7 @@ function SystemAnalysisTab() {
   const [clusterToken, setClusterToken] = useState("");
   const [loadTestError, setLoadTestError] = useState("");
   const [loadTestRunning, setLoadTestRunning] = useState(false);
+  const [loadTestStatus, setLoadTestStatus] = useState(""); // "", "cleaning", "starting"
   const [connectionStatus, setConnectionStatus] = useState(null); // null, 'success', or 'error'
   const [connectionMessage, setConnectionMessage] = useState("");
   const [testingConnection, setTestingConnection] = useState(false);
@@ -133,17 +134,19 @@ function SystemAnalysisTab() {
 
     try {
       setLoadTestRunning(true);
+      setLoadTestStatus("cleaning");
       setLoadTestError("");
       setSimulationStatus(null);
       setSimulationMessage("");
-      
+
       const result = await runJMeterSimulation(
         backendRoute,
         clusterServerUrl,
         clusterToken,
         selectedNamespace
       );
-      
+
+      setLoadTestStatus("starting");
       setSimulationStatus("success");
       setSimulationMessage(result.message || "JMeter simulation started in background");
     } catch (err) {
@@ -152,6 +155,7 @@ function SystemAnalysisTab() {
       setSimulationMessage(errorMsg);
     } finally {
       setLoadTestRunning(false);
+      setLoadTestStatus("");
     }
   }
 
@@ -414,7 +418,11 @@ function SystemAnalysisTab() {
             onClick={handleRunJMeterSimulation}
             disabled={loadTestRunning}
           >
-            {loadTestRunning ? "Running..." : "Run JMeter Simulation"}
+            {loadTestRunning
+              ? loadTestStatus === "cleaning"
+                ? "Cleaning up old job..."
+                : "Starting simulation..."
+              : "Run JMeter Simulation"}
           </button>
           </div>
         )}
