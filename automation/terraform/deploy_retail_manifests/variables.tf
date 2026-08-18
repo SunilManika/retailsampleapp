@@ -26,9 +26,15 @@ variable "postgres_db" {
 variable "postgres_user" {
   type = string
 }
-
 variable "postgres_password" {
   type      = string
   sensitive = true
 }
+
+variable "storage_class" {
+  description = "Kubernetes StorageClass name for the PostgreSQL PersistentVolumeClaim"
+  type        = string
+  default     = ""
+}
+
 

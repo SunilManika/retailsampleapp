@@ -29,6 +29,8 @@ resource "kubernetes_manifest" "retail" {
         postgres_db        = base64encode(var.postgres_db)
         postgres_user      = base64encode(var.postgres_user)
         postgres_password  = base64encode(var.postgres_password)
+
+        storage_class = var.storage_class
       }
     )
   )

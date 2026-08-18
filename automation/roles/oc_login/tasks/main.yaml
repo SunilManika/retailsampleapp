@@ -1,2 +1,9 @@
-- command: oc login --token={{ ocp_token }} --server={{ ocp_server }}
+- name: Login with token
+  command: oc login --token={{ ocp_token }} --server={{ ocp_server }}
   no_log: true
+  when: ocp_token | default('') | length > 0
+
+- name: Login with username and password
+  command: oc login --username={{ ocp_username }} --password={{ ocp_password }} --server={{ ocp_server }}
+  no_log: true
+  when: ocp_token | default('') | length == 0

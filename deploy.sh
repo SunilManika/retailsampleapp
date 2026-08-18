@@ -3,11 +3,17 @@ set -euo pipefail
 
 # ---------------------------------------------------------------
 # Required environment variables (set before running this script)
-#   OC_TOKEN              OpenShift login token
 #   OC_SERVER             OpenShift API server URL
 #   DOCKER_USERNAME       Docker Hub username
 #   DOCKER_PASSWORD       Docker Hub password
 #   NAMESPACE             OpenShift namespace to deploy into
+#
+# Authentication — supply exactly one of the following:
+#   OC_TOKEN              OpenShift login token  (mutually exclusive with OC_PASSWORD)
+#   OC_USERNAME + OC_PASSWORD  OpenShift username/password login
+#
+# Optional
+#   STORAGE_CLASS         Kubernetes StorageClass for the PostgreSQL PVC (defaults to cluster default)
 #
 # Optional — RAG stack (data-for-ai/rag-retrieval-fastapi-server)
 #   DEPLOY_RAG            Set to "true" to build and deploy the RAG server (default: false)
@@ -20,11 +26,27 @@ set -euo pipefail
 #   MILVUS_PASSWORD       Milvus password                (required when DEPLOY_RAG=true)
 # ---------------------------------------------------------------
 
-: "${OC_TOKEN:?OC_TOKEN env var is not set}"
+OC_TOKEN="${OC_TOKEN:-}"
+OC_USERNAME="${OC_USERNAME:-}"
+OC_PASSWORD="${OC_PASSWORD:-}"
+
+# Validate that exactly one auth method is provided
+if [[ -z "$OC_TOKEN" && ( -z "$OC_USERNAME" || -z "$OC_PASSWORD" ) ]]; then
+    echo "ERROR: Provide either OC_TOKEN or both OC_USERNAME and OC_PASSWORD" >&2
+    exit 1
+fi
+if [[ -n "$OC_TOKEN" && ( -n "$OC_USERNAME" || -n "$OC_PASSWORD" ) ]]; then
+    echo "ERROR: OC_TOKEN and OC_USERNAME/OC_PASSWORD are mutually exclusive" >&2
+    exit 1
+fi
+
 : "${OC_SERVER:?OC_SERVER env var is not set}"
 : "${DOCKER_USERNAME:?DOCKER_USERNAME env var is not set}"
 : "${DOCKER_PASSWORD:?DOCKER_PASSWORD env var is not set}"
 : "${NAMESPACE:?NAMESPACE env var is not set}"
+
+# Storage class — defaults to empty string (cluster default storage class will be used)
+STORAGE_CLASS="${STORAGE_CLASS:-}"
 
 # RAG deployment flag — defaults to false
 DEPLOY_RAG="${DEPLOY_RAG:-false}"
@@ -263,6 +285,12 @@ update_yaml_images() {
         sedi "s|MILVUS_PORT_PLACEHOLDER|${MILVUS_PORT}|g"                        "$f"
         sedi "s|MILVUS_USER_PLACEHOLDER|${MILVUS_USER}|g"                        "$f"
         sedi "s|MILVUS_PASSWORD_PLACEHOLDER|${MILVUS_PASSWORD}|g"                "$f"
+        # Storage class — inject value or strip the line entirely when none is provided
+        if [[ -n "$STORAGE_CLASS" ]]; then
+            sedi "s|storageClassName: STORAGE_CLASS_PLACEHOLDER|storageClassName: ${STORAGE_CLASS}|g" "$f"
+        else
+            sedi "/storageClassName: STORAGE_CLASS_PLACEHOLDER/d"                "$f"
+        fi
         # JMeter backend route — substituted after the route is known (see rebuild_frontend_with_route)
         # Leave BACKEND_ROUTE_PLACEHOLDER as-is here; it is patched in patch_jmeter_route()
         # Catch-all for any remaining NAMESPACE_PLACEHOLDER
@@ -285,8 +313,13 @@ update_yaml_images() {
 # ---------------------------------------------------------------
 oc_login() {
     step "Logging into OpenShift"
-    run_cmd "oc login" \
-        "oc login --token=$OC_TOKEN --server=$OC_SERVER --insecure-skip-tls-verify=true"
+    if [[ -n "$OC_TOKEN" ]]; then
+        run_cmd "oc login" \
+            "oc login --token=$OC_TOKEN --server=$OC_SERVER --insecure-skip-tls-verify=true"
+    else
+        run_cmd "oc login" \
+            "oc login --username=$OC_USERNAME --password=$OC_PASSWORD --server=$OC_SERVER --insecure-skip-tls-verify=true"
+    fi
 }
 
 prepare_namespace() {

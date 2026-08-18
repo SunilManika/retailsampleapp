@@ -9,7 +9,10 @@
     terraform_dir: /root/retailapp-main/automation
 
     ocp_server: "{{ lookup('env','OCP_SERVER') }}"
-    ocp_token: "{{ lookup('env','OCP_TOKEN') }}"
+    ocp_token: "{{ lookup('env','OC_TOKEN') | default('', true) }}"
+    ocp_username: "{{ lookup('env','OC_USERNAME') | default('', true) }}"
+    ocp_password: "{{ lookup('env','OC_PASSWORD') | default('', true) }}"
+    storage_class: "{{ lookup('env','STORAGE_CLASS') | default('', true) }}"
 
     docker_username: "{{ lookup('env', 'DOCKER_USERNAME') }}"
     docker_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"

@@ -12,6 +12,7 @@
       postgres_db         = "{{ postgres_db }}"
       postgres_user       = "{{ postgres_user }}"
       postgres_password   = "{{ postgres_password }}"
+      storage_class       = "{{ storage_class }}"
   no_log: true
 
 - name: Terraform Init

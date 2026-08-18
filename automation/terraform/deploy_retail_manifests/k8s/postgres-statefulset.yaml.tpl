@@ -66,7 +66,7 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
+        storageClassName: ${storage_class}
         resources:
           requests:
             storage: 10Gi
-          storageClassName: ibmc-vpc-block-10iops-tier

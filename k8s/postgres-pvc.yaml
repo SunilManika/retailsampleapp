@@ -6,6 +6,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: STORAGE_CLASS_PLACEHOLDER
   resources:
     requests:
       storage: 5Gi
