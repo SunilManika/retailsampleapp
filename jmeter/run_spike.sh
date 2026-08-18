@@ -43,7 +43,7 @@ echo ""
 JMX="./retail_spike.jmx"
 USERS=300
 RAMP=30
-DURATION=300
+DURATION=1800
 LOG="/tmp/results_5min.jtl"
 
 # ------------------------------
