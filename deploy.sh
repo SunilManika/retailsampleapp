@@ -318,14 +318,25 @@ update_yaml_images() {
 # ---------------------------------------------------------------
 oc_login() {
     step "Logging into OpenShift"
-    local tls_flag=""
-    [[ "$OC_INSECURE_TLS" == "true" ]] && tls_flag="--insecure-skip-tls-verify=true"
+    info "oc login"
+
+    # Build the argument list as an array so no word-splitting or empty-token
+    # issues occur when tls_flag is unset (eval-based run_cmd cannot handle this safely)
+    local -a cmd
     if [[ -n "$OC_TOKEN" ]]; then
-        run_cmd "oc login" \
-            "oc login --token=$OC_TOKEN --server=$OC_SERVER $tls_flag"
+        cmd=(oc login --token="$OC_TOKEN" --server="$OC_SERVER")
     else
-        run_cmd "oc login" \
-            "oc login --username=$OC_USERNAME --password=$OC_PASSWORD --server=$OC_SERVER $tls_flag"
+        cmd=(oc login --username="$OC_USERNAME" --password="$OC_PASSWORD" --server="$OC_SERVER")
+    fi
+    [[ "$OC_INSECURE_TLS" == "true" ]] && cmd+=(--insecure-skip-tls-verify=true)
+
+    if ! output=$("${cmd[@]}" 2>&1); then
+        echo
+        echo "    [FAILED] oc login"
+        echo "    ----- ERROR OUTPUT -----"
+        echo "$output"
+        echo "    ------------------------"
+        exit 1
     fi
 }
 
