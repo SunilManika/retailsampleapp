@@ -320,16 +320,18 @@ oc_login() {
     step "Logging into OpenShift"
     info "oc login"
 
-    # Build the argument list as an array so no word-splitting or empty-token
-    # issues occur when tls_flag is unset (eval-based run_cmd cannot handle this safely)
+    # Mirror the positional-argument form that works interactively:
+    #   oc login -u <user> -p <pass> <server>
+    # Using --server=URL takes a different code path on some clusters and returns 500.
     local -a cmd
     if [[ -n "$OC_TOKEN" ]]; then
-        cmd=(oc login --token="$OC_TOKEN" --server="$OC_SERVER")
+        cmd=(oc login --token="$OC_TOKEN" "$OC_SERVER")
     else
-        cmd=(oc login --username="$OC_USERNAME" --password="$OC_PASSWORD" --server="$OC_SERVER")
+        cmd=(oc login -u "$OC_USERNAME" -p "$OC_PASSWORD" "$OC_SERVER")
     fi
     [[ "$OC_INSECURE_TLS" == "true" ]] && cmd+=(--insecure-skip-tls-verify=true)
 
+    info "Running: oc login ... ${OC_SERVER}"
     if ! output=$("${cmd[@]}" 2>&1); then
         echo
         echo "    [FAILED] oc login"
@@ -338,6 +340,7 @@ oc_login() {
         echo "    ------------------------"
         exit 1
     fi
+    info "Login output: $output"
 }
 
 prepare_namespace() {
