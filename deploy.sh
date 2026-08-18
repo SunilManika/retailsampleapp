@@ -14,6 +14,7 @@ set -euo pipefail
 #
 # Optional
 #   STORAGE_CLASS         Kubernetes StorageClass for the PostgreSQL PVC (defaults to cluster default)
+#   OC_INSECURE_TLS       Set to "true" to skip TLS verification on oc login (default: false)
 #
 # Optional — RAG stack (data-for-ai/rag-retrieval-fastapi-server)
 #   DEPLOY_RAG            Set to "true" to build and deploy the RAG server (default: false)
@@ -47,6 +48,10 @@ fi
 
 # Storage class — defaults to empty string (cluster default storage class will be used)
 STORAGE_CLASS="${STORAGE_CLASS:-}"
+
+# TLS verification — off by default; set OC_INSECURE_TLS=true only when the cluster
+# uses a self-signed certificate that cannot be validated
+OC_INSECURE_TLS="${OC_INSECURE_TLS:-false}"
 
 # RAG deployment flag — defaults to false
 DEPLOY_RAG="${DEPLOY_RAG:-false}"
@@ -313,12 +318,14 @@ update_yaml_images() {
 # ---------------------------------------------------------------
 oc_login() {
     step "Logging into OpenShift"
+    local tls_flag=""
+    [[ "$OC_INSECURE_TLS" == "true" ]] && tls_flag="--insecure-skip-tls-verify=true"
     if [[ -n "$OC_TOKEN" ]]; then
         run_cmd "oc login" \
-            "oc login --token=$OC_TOKEN --server=$OC_SERVER --insecure-skip-tls-verify=true"
+            "oc login --token=$OC_TOKEN --server=$OC_SERVER $tls_flag"
     else
         run_cmd "oc login" \
-            "oc login --username=$OC_USERNAME --password=$OC_PASSWORD --server=$OC_SERVER --insecure-skip-tls-verify=true"
+            "oc login --username=$OC_USERNAME --password=$OC_PASSWORD --server=$OC_SERVER $tls_flag"
     fi
 }
 
