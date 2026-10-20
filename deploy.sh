@@ -345,7 +345,20 @@ oc_login() {
 
 prepare_namespace() {
     step "Creating namespace and applying SCC"
-    run_cmd "Apply namespace"         "oc apply -f $HOME/retailsampleapp-main/k8s/namespace.yaml"
+    # Create the namespace directly (rather than relying on the downloaded
+    # namespace.yaml) so any new or existing NAMESPACE value works.
+    if oc get namespace "$NAMESPACE" &>/dev/null; then
+        info "Namespace '$NAMESPACE' already exists"
+    else
+        run_cmd "Create namespace '$NAMESPACE'" "oc create namespace $NAMESPACE"
+    fi
+    run_cmd "Label namespace" \
+        "oc label namespace $NAMESPACE --overwrite \
+            environment=$NAMESPACE \
+            app.kubernetes.io/environment=$NAMESPACE \
+            pod-security.kubernetes.io/enforce=baseline \
+            pod-security.kubernetes.io/audit=baseline \
+            pod-security.kubernetes.io/warn=baseline"
     run_cmd "Create service account"  "oc create serviceaccount $NAMESPACE -n $NAMESPACE || true"
     run_cmd "Apply SCC to service account" \
         "oc adm policy add-scc-to-user anyuid -z $NAMESPACE -n $NAMESPACE"

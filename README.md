@@ -47,7 +47,21 @@ Quick local deployment using Podman Compose:
 
 ### Option 2: OpenShift/Kubernetes
 
-Production deployment on Red Hat OpenShift:
+Production deployment on Red Hat OpenShift.
+
+**Step 1: Export the required environment variables**
+
+```bash
+export OC_TOKEN=<your-openshift-login-token>
+export OC_SERVER=<your-openshift-api-server-url>   # e.g. https://api.<cluster-domain>:6443
+export DOCKER_USERNAME=<your-docker-hub-username>
+export DOCKER_PASSWORD=<your-docker-hub-password>
+export NAMESPACE=<namespace-to-deploy-into>        # created automatically if it does not exist
+```
+
+If you don't have Docker Hub credentials yet, create an account at [https://www.docker.com/](https://www.docker.com/). The images are built and pushed to `docker.io/<DOCKER_USERNAME>`.
+
+**Step 2: Run the deployment script**
 
 ```bash
 ./deploy.sh
