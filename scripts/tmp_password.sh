@@ -15,7 +15,7 @@ set -euo pipefail
 
 NAMESPACE="${1:?Usage: $0 <namespace> [temporary_password]}"
 #TMP="${2:-wrong_123}"
-TMP="${2:-wrong_123}"
+TMP="${2:-wrong_password_123}"
 DB_USER="${DB_USER:-retail_user}"
 DB_NAME="${DB_NAME:-retaildb}"
 BACKEND_DEPLOYMENT="${BACKEND_DEPLOYMENT:-retail-backend}"
