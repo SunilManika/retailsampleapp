@@ -1,6 +1,15 @@
 {
+  "name": "retail-sample-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "start:backend": "npm --prefix backend start",
+    "dev": "npm --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build"
+  },
   "dependencies": {
-    "@instana/collector": "^5.4.2",
+    "@instana/collector": "^6.10.0",
     "axios": "^1.15.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -11,5 +20,10 @@
     "passport": "^0.7.0",
     "passport-openidconnect": "^0.1.2",
     "pg": "^8.20.0"
+  },
+  "allowScripts": {
+    "event-loop-stats@1.4.1": true,
+    "gcstats.js@1.0.0": true,
+    "@instana/autoprofile@6.10.0": true
   }
 }

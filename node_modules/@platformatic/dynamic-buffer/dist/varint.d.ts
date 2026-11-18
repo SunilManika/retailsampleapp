@@ -1,0 +1,12 @@
+export declare const MOST_SIGNIFICANT_BIT_FLAG = 128;
+export declare const MOST_SIGNIFICANT_BIT_FLAG_64 = 128n;
+export declare const LEAST_SIGNIFICANT_7_BITS = 127;
+export declare const LEAST_SIGNIFICANT_7_BITS_64 = 127n;
+export declare const BITS_8PLUS_MASK: number;
+export declare const BITS_8PLUS_MASK_64: bigint;
+export declare function intZigZagEncode(value: number): number;
+export declare function intZigZagDecode(value: number): number;
+export declare function int64ZigZagEncode(value: bigint): bigint;
+export declare function int64ZigZagDecode(value: bigint): bigint;
+export declare function sizeOfUnsignedVarInt(value: number): number;
+export declare function sizeOfUnsignedVarInt64(value: bigint): number;
